@@ -1,4 +1,5 @@
 
+import git
 import streamlit as st
 import pandas as pd
 import seaborn as sns
@@ -1122,7 +1123,5 @@ st.markdown("""
 
 
 
-
-
-# How to kill the port: lsof -i :8501 then kill -9 <PID>
-# To run the app: streamlit run Insights_app.py
+                                     
+                        

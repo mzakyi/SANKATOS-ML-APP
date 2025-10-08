@@ -1,0 +1,1128 @@
+
+import streamlit as st
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.svm import SVC, SVR
+from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, confusion_matrix
+from xgboost import XGBClassifier, XGBRegressor
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
+import numpy as np
+import plotly.express as px
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+import io
+import base64
+from ydata_profiling import ProfileReport
+import tempfile
+import os
+
+# Cache data loading for performance
+@st.cache_data
+def load_data(file):
+    return pd.read_csv(file)
+
+# Cached KPI computation
+@st.cache_data
+def compute_kpi_base(df, kpi_def_without_filter):
+    kpi_df = df.copy()
+    return kpi_df
+
+# Function to create PDF report with styled table
+def create_pdf_report(kpi_results, filename="kpi_report.pdf"):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+    data = [['KPI Label', 'Value', 'Group']]
+    for kpi in kpi_results:
+        data.append([kpi['label'], kpi['value'], kpi['group'] or 'N/A'])
+    t = RLTable(data, colWidths=[2*inch, 2*inch, 2*inch])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 14),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('TEXTCOLOR', (0,1), (-1,-1), colors.black),
+        ('GRID', (0,0), (-1,-1), 1, colors.black),
+        ('BOX', (0,0), (-1,-1), 2, colors.darkblue),
+    ]))
+    elements.append(t)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+st.title("Dataset Cleaner, KPI Generator, Insights & ML Predictions App")
+
+# INSERTION POINT 1: Description Section
+st.markdown("""
+### Welcome to the Sankatos App
+The Sankatos App is a powerful tool for data analysis and machine learning. Upload your CSV dataset to clean and preprocess data, generate detailed profile reports, explore insights with interactive visualizations, define custom KPIs, and build predictive models with automated or manual ML options. Perfect for data enthusiasts and professionals seeking actionable insights.
+""")
+
+# ADD LOGO HERE - Circular "S" in top left corner
+st.markdown("""
+<style>
+.logo-container {
+position: fixed;
+top: 80px;
+left: 40px;
+width: 120px;
+height: 120px;
+z-index: 999;
+}
+</style>
+<div class="logo-container">
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+   <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+     <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+     <stop offset="100%" style="stop-color:#6366F1;stop-opacity:1" />
+   </linearGradient>
+   <filter id="glow">
+     <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+     <feMerge>
+       <feMergeNode in="coloredBlur"/>
+       <feMergeNode in="SourceGraphic"/>
+     </feMerge>
+   </filter>
+ </defs>
+ <circle cx="100" cy="100" r="90" fill="url(#purpleGradient)" filter="url(#glow)"/>
+ <text x="100" y="145" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white" text-anchor="middle">S</text>
+ <g transform="translate(150, 50)">
+   <path d="M 0 -6 L 1 -1.5 L 6 0 L 1 1.5 L 0 6 L -1 1.5 L -6 0 L -1 -1.5 Z" fill="white" opacity="0.9"/>
+ </g>
+ <g transform="translate(55, 155)">
+   <path d="M 0 -4 L 0.7 -1 L 4 0 L 0.7 1 L 0 4 L -0.7 1 L -4 0 L -0.7 -1 Z" fill="white" opacity="0.8"/>
+ </g>
+</svg>
+</div>
+""", unsafe_allow_html=True)
+
+# INSERTION POINT 2: About Section
+st.markdown("""
+<style>
+.about-container {
+    position: fixed;
+    top: 80px;
+    right: 40px;
+    width: 200px;
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 999;
+    font-family: Arial, sans-serif;
+}
+.about-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 5px;
+}
+.about-content {
+    font-size: 0.9rem;
+    color: #555;
+}
+</style>
+<div class="about-container">
+    <div class="about-title">About the Owner</div>
+    <div class="about-content">My name is Mohammed Zakyi and I am a data scientist specializing in machine learning and data analytics. I created this app to help users unlock insights from their data with ease. Feel free to contact me for collaborations or inquiries!
+</div>
+""", unsafe_allow_html=True)
+
+# Initialize session state for cleaned_df and history
+if 'cleaned_df' not in st.session_state:
+    st.session_state.cleaned_df = None
+if 'history' not in st.session_state:
+    st.session_state.history = []
+if 'last_uploaded_file' not in st.session_state:
+    st.session_state.last_uploaded_file = None
+
+# Step 1: Data Loading
+uploaded_file = st.file_uploader("Upload your CSV dataset", type=["csv"])
+
+if uploaded_file is not None:
+    # Reset session state when a new file is uploaded
+    if st.session_state.last_uploaded_file != uploaded_file.name:
+        st.session_state.cleaned_df = load_data(uploaded_file)
+        st.session_state.history = [st.session_state.cleaned_df.copy()]
+        st.session_state.last_uploaded_file = uploaded_file.name
+        st.session_state.model_pipeline = None
+        st.session_state.model_name = None
+        st.session_state.task = None
+        st.session_state.feature_cols = None
+        st.session_state.num_cols = None
+        st.session_state.cat_cols = None
+        st.session_state.target_col = None
+    df = st.session_state.cleaned_df
+    st.write("Original Dataset Preview:")
+    st.dataframe(df.head())
+
+    # Undo Last Action Button
+    if len(st.session_state.history) > 1:
+        if st.button("Undo Last Action"):
+            st.session_state.history.pop()  # Remove the latest state
+            st.session_state.cleaned_df = st.session_state.history[-1].copy()
+            st.success("Last action undone. Dataset restored to previous state.")
+            st.rerun()
+
+    # Step 2: Dataset Profiling
+    st.header("Dataset Profiling")
+    st.write("Generate profile reports to analyze the dataset before and after cleaning.")
+    
+    # Display warning for large datasets before initial profile button
+    if len(df) > 10000 or len(df.columns) > 50:
+        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues. Consider using a smaller dataset or enabling minimal mode (already enabled).")
+    
+    # Option to generate initial dataset profile
+    if st.button("Generate Initial Dataset Profile Report"):
+        with st.spinner("Generating initial profile report..."):
+            try:
+                profile = ProfileReport(df, title="Initial Dataset Profile Report", minimal=True)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
+                    profile.to_file(tmp_file.name)
+                    with open(tmp_file.name, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                st.subheader("Initial Dataset Profile Report")
+                st.components.v1.html(html_content, height=1000, scrolling=True)
+                b64 = base64.b64encode(html_content.encode()).decode()
+                href = f'<a href="data:text/html;base64,{b64}" download="initial_profile_report.html">Download Initial Profile Report</a>'
+                st.markdown(href, unsafe_allow_html=True)
+                os.unlink(tmp_file.name)
+            except ImportError:
+                st.error("Error: ydata-profiling is not installed. Please install it using `pip install ydata-profiling`.")
+            except Exception as e:
+                st.error(f"Error generating initial profile report: {str(e)}")
+
+    # Step 3: Data Cleaning Options
+    st.header("Clean the Dataset")
+    clean_options = st.multiselect(
+        "Select cleaning steps:",
+        [
+            "Remove duplicates",
+            "Fill missing values (mean for numerics, mode for categoricals)",
+            "Drop rows with missing values",
+            "Convert columns to numeric (if possible)",
+            "Remove outliers (IQR method for numeric columns)"
+        ],
+        key="clean_options"
+    )
+
+    if clean_options and st.button("Apply Cleaning"):
+        cleaned_df = st.session_state.cleaned_df.copy()
+        if "Remove duplicates" in clean_options:
+            cleaned_df = cleaned_df.drop_duplicates()
+        if "Fill missing values (mean for numerics, mode for categoricals)" in clean_options:
+            for col in cleaned_df.columns:
+                if pd.api.types.is_numeric_dtype(cleaned_df[col]):
+                    cleaned_df[col] = cleaned_df[col].fillna(cleaned_df[col].mean())
+                else:
+                    mode_val = cleaned_df[col].mode()
+                    cleaned_df[col] = cleaned_df[col].fillna(mode_val[0] if not mode_val.empty else "Unknown")
+        if "Drop rows with missing values" in clean_options:
+            cleaned_df = cleaned_df.dropna()
+        if "Convert columns to numeric (if possible)" in clean_options:
+            for col in cleaned_df.columns:
+                cleaned_df[col] = pd.to_numeric(cleaned_df[col], errors='ignore')
+        if "Remove outliers (IQR method for numeric columns)" in clean_options:
+            num_cols = cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+            for col in num_cols:
+                Q1 = cleaned_df[col].quantile(0.25)
+                Q3 = cleaned_df[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                cleaned_df = cleaned_df[(cleaned_df[col] >= lower_bound) & (cleaned_df[col] <= upper_bound)]
+        # Update session state
+        st.session_state.cleaned_df = cleaned_df
+        st.session_state.history.append(cleaned_df.copy())
+        st.success("Cleaning applied successfully!")
+        st.write("Cleaned Dataset Preview:")
+        st.dataframe(cleaned_df.head())
+        st.download_button("Download Cleaned CSV", cleaned_df.to_csv(index=False), file_name="cleaned_dataset.csv", key="download_cleaned_csv")
+    else:
+        st.write("Current Dataset Preview:")
+        st.dataframe(st.session_state.cleaned_df.head())
+        st.download_button("Download Current CSV", st.session_state.cleaned_df.to_csv(index=False), file_name="current_dataset.csv", key="download_current_csv")
+
+    # Display warning for large datasets before cleaned profile button
+    if len(st.session_state.cleaned_df) > 10000 or len(st.session_state.cleaned_df.columns) > 50:
+        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues. Consider using a smaller dataset or enabling minimal mode (already enabled).")
+    
+    # Option to generate cleaned dataset profile
+    if st.button("Generate Cleaned Dataset Profile Report"):
+        with st.spinner("Generating cleaned profile report..."):
+            try:
+                profile = ProfileReport(st.session_state.cleaned_df, title="Cleaned Dataset Profile Report", minimal=True)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
+                    profile.to_file(tmp_file.name)
+                    with open(tmp_file.name, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                st.subheader("Cleaned Dataset Profile Report")
+                st.components.v1.html(html_content, height=1000, scrolling=True)
+                b64 = base64.b64encode(html_content.encode()).decode()
+                href = f'<a href="data:text/html;base64,{b64}" download="cleaned_profile_report.html">Download Cleaned Profile Report</a>'
+                st.markdown(href, unsafe_allow_html=True)
+                os.unlink(tmp_file.name)
+            except ImportError:
+                st.error("Error: ydata-profiling is not installed. Please install it using `pip install ydata-profiling`.")
+            except Exception as e:
+                st.error(f"Error generating cleaned profile report: {str(e)}")
+
+    # Step 4: Exploring The Dataset with Filters
+    st.header("Exploring The Dataset")
+    insight_options = st.multiselect(
+        "Choose insights to display:",
+        ["Summary Statistics", "Value Counts (for categorical columns)", "Unique Values & Counts by Column", 
+         "Correlation Heatmap", "Histogram for Numeric Columns", "Box Plot for Numeric Columns", 
+         "Strong Correlations", "Data Types", "Describe", "Info"],
+        key="insight_options"
+    )
+
+    if "Summary Statistics" in insight_options:
+        st.subheader("Summary Statistics")
+        st.dataframe(st.session_state.cleaned_df.describe())
+
+    if "Value Counts (for categorical columns)" in insight_options:
+        st.subheader("Value Counts")
+        cat_cols = st.session_state.cleaned_df.select_dtypes(include=['object']).columns
+        for col in cat_cols:
+            st.write(f"Value Counts for {col}:")
+            st.dataframe(st.session_state.cleaned_df[col].value_counts().reset_index())
+
+    if "Unique Values & Counts by Column" in insight_options:
+        st.subheader("Unique Values & Counts by Column")
+        selected_cols_for_unique = st.multiselect(
+            "Select columns to view unique values and counts:",
+            st.session_state.cleaned_df.columns.tolist(),
+            key="unique_cols_select"
+        )
+        
+        if selected_cols_for_unique:
+            for col in selected_cols_for_unique:
+                with st.expander(f"📊 {col} - Unique Values & Counts"):
+                    unique_count = st.session_state.cleaned_df[col].nunique()
+                    total_count = len(st.session_state.cleaned_df[col])
+                    null_count = st.session_state.cleaned_df[col].isnull().sum()
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Unique Values", unique_count)
+                    with col2:
+                        st.metric("Total Records", total_count)
+                    with col3:
+                        st.metric("Null Values", null_count)
+                    
+                    st.write("**Value Counts:**")
+                    value_counts_df = st.session_state.cleaned_df[col].value_counts().reset_index()
+                    value_counts_df.columns = [col, 'Count']
+                    value_counts_df['Percentage'] = (value_counts_df['Count'] / total_count * 100).round(2)
+                    st.dataframe(value_counts_df, use_container_width=True)
+                    
+                    if len(value_counts_df) > 0:
+                        top_n = min(10, len(value_counts_df))
+                        fig = px.bar(
+                            value_counts_df.head(top_n), 
+                            x=col, 
+                            y='Count',
+                            title=f"Top {top_n} Values in {col}",
+                            labels={col: col, 'Count': 'Frequency'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Please select columns to view their unique values and counts.")
+
+    if "Correlation Heatmap" in insight_options:
+        st.subheader("Correlation Heatmap")
+        num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+        if len(num_cols) > 1:
+            corr = st.session_state.cleaned_df[num_cols].corr()
+            fig, ax = plt.subplots()
+            sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+            st.pyplot(fig)
+        else:
+            st.write("Need at least 2 numeric columns for correlation.")
+
+    if "Histogram for Numeric Columns" in insight_options:
+        st.subheader("Histograms")
+        num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+        for col in num_cols:
+            fig, ax = plt.subplots()
+            st.session_state.cleaned_df[col].hist(ax=ax)
+            ax.set_title(f"Histogram of {col}")
+            st.pyplot(fig)
+
+    if "Box Plot for Numeric Columns" in insight_options:
+        st.subheader("Box Plots")
+        num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+        for col in num_cols:
+            fig, ax = plt.subplots()
+            sns.boxplot(x=st.session_state.cleaned_df[col], ax=ax)
+            ax.set_title(f"Box Plot of {col}")
+            st.pyplot(fig)
+
+    if "Strong Correlations" in insight_options:
+        st.subheader("Strong Correlations")
+        num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+        if len(num_cols) > 1:
+            corr_matrix = st.session_state.cleaned_df[num_cols].corr()
+            strong_corrs = []
+            for i in range(len(corr_matrix.columns)):
+                for j in range(i + 1, len(corr_matrix.columns)):
+                    col1 = corr_matrix.columns[i]
+                    col2 = corr_matrix.columns[j]
+                    corr_value = corr_matrix.iloc[i, j]
+                    if abs(corr_value) > 0.7:
+                        strong_corrs.append((col1, col2, corr_value))
+            if strong_corrs:
+                st.write("Column pairs with strong correlation (|r| > 0.7):")
+                corr_df = pd.DataFrame(strong_corrs, columns=['Column 1', 'Column 2', 'Correlation Score'])
+                st.dataframe(corr_df)
+            else:
+                st.write("No strong correlations (|r| > 0.7) found among numeric columns.")
+        else:
+            st.write("Need at least 2 numeric columns to calculate correlations.")
+
+    if "Data Types" in insight_options:
+        st.subheader("Data Types")
+        st.write(st.session_state.cleaned_df.dtypes)
+
+    if "Describe" in insight_options:
+        st.subheader("Describe")
+        st.dataframe(st.session_state.cleaned_df.describe(include='all'))
+
+    if "Info" in insight_options:
+        st.subheader("Info")
+        buffer = io.StringIO()
+        st.session_state.cleaned_df.info(buf=buffer)
+        st.text(buffer.getvalue())
+
+    # Step 5: Change Data Types
+    st.header("Change Data Types")
+    change_types = st.multiselect("Select columns to change data type", st.session_state.cleaned_df.columns, key="change_types")
+    if change_types:
+        type_changes = {}
+        for col in change_types:
+            new_type = st.selectbox(f"New data type for {col}", ["int64", "float64", "object", "category"], key=f"type_{col}")
+            type_changes[col] = new_type
+        if type_changes and st.button("Apply Data Type Changes"):
+            cleaned_df = st.session_state.cleaned_df.copy()
+            for col, dtype in type_changes.items():
+                try:
+                    cleaned_df[col] = cleaned_df[col].astype(dtype)
+                except Exception as e:
+                    st.error(f"Error converting {col} to {dtype}: {str(e)}")
+            st.session_state.cleaned_df = cleaned_df
+            st.session_state.history.append(cleaned_df.copy())
+            st.success("Data type changes applied successfully!")
+            st.write("Updated Dataset Preview:")
+            st.dataframe(cleaned_df.head())
+
+    # Step 6: Delete Columns
+    st.header("Delete Columns")
+    delete_cols = st.multiselect("Select columns to delete", st.session_state.cleaned_df.columns, key="delete_cols")
+    if delete_cols and st.button("Delete Selected Columns"):
+        cleaned_df = st.session_state.cleaned_df.drop(columns=delete_cols)
+        st.session_state.cleaned_df = cleaned_df
+        st.session_state.history.append(cleaned_df.copy())
+        st.success("Selected columns deleted successfully!")
+        st.write("Updated Dataset Preview:")
+        st.dataframe(cleaned_df.head())
+
+    # Step 7: Rename Columns
+    st.header("Rename Columns")
+    rename_cols = st.multiselect("Select columns to rename", st.session_state.cleaned_df.columns, key="rename_cols")
+    if rename_cols:
+        new_names = {}
+        for col in rename_cols:
+            new_name = st.text_input(f"New name for {col}", value=col, key=f"rename_{col}")
+            if new_name and new_name != col:
+                new_names[col] = new_name
+        if new_names and st.button("Apply Renames"):
+            cleaned_df = st.session_state.cleaned_df.rename(columns=new_names)
+            st.session_state.cleaned_df = cleaned_df
+            st.session_state.history.append(cleaned_df.copy())
+            st.success("Columns renamed successfully!")
+            st.write("Updated Dataset Preview:")
+            st.dataframe(cleaned_df.head())
+
+    # Step 8: Add New Columns with Conditions or Arithmetic
+    st.header("Add New Columns with Conditions or Arithmetic")
+    add_columns = st.checkbox("Add new columns based on conditions or arithmetic")
+    if add_columns:
+        num_columns = st.number_input("Number of columns to add", min_value=1, max_value=10, value=1, step=1)
+        column_definitions = []
+        for i in range(num_columns):
+            st.write(f"### Column {i+1}")
+            new_col_name = st.text_input(f"New column name for Column {i+1}", key=f"new_col_name_{i}")
+            if new_col_name:
+                operation_type = st.radio(f"Select operation type for Column {i+1}", ["If-Else Condition", "Arithmetic Calculation"], key=f"operation_type_{i}")
+                if operation_type == "If-Else Condition":
+                    condition_col = st.selectbox(f"Select column for condition for Column {i+1}", st.session_state.cleaned_df.columns, key=f"condition_col_{i}")
+                    condition_type = st.selectbox(f"Condition type for Column {i+1}", ["=", ">", "<", ">=", "<=", "!="], key=f"condition_type_{i}")
+                    condition_value = st.text_input(f"Condition value for Column {i+1}", key=f"condition_value_{i}")
+                    true_value = st.text_input(f"Value if true for Column {i+1}", key=f"true_value_{i}")
+                    false_value = st.text_input(f"Value if false for Column {i+1}", key=f"false_value_{i}")
+                    column_definitions.append({
+                        'name': new_col_name, 'type': 'if-else',
+                        'condition_col': condition_col, 'condition_type': condition_type,
+                        'condition_value': condition_value, 'true_value': true_value, 'false_value': false_value
+                    })
+                elif operation_type == "Arithmetic Calculation":
+                    col1 = st.selectbox(f"Select first column or enter value for Column {i+1}", [""] + st.session_state.cleaned_df.columns.tolist() + ["Custom Value"], key=f"col1_arithmetic_{i}")
+                    val1 = st.text_input(f"Value for Col1 (if Custom Value selected) for Column {i+1}", "0", key=f"val1_{i}") if col1 == "Custom Value" else None
+                    col2 = st.selectbox(f"Select second column or enter value for Column {i+1}", [""] + st.session_state.cleaned_df.columns.tolist() + ["Custom Value"], key=f"col2_arithmetic_{i}")
+                    val2 = st.text_input(f"Value for Col2 (if Custom Value selected) for Column {i+1}", "1", key=f"val2_{i}") if col2 == "Custom Value" else None
+                    operation = st.selectbox(f"Select operation for Column {i+1}", ["+", "-", "*", "/", "%", "**"], key=f"operation_{i}")
+                    column_definitions.append({
+                        'name': new_col_name, 'type': 'arithmetic',
+                        'col1': col1, 'val1': val1, 'col2': col2, 'val2': val2, 'operation': operation
+                    })
+        if st.button("Apply Columns"):
+            cleaned_df = st.session_state.cleaned_df.copy()
+            for col_def in column_definitions:
+                try:
+                    if col_def['type'] == 'if-else':
+                        if col_def['condition_type'] == "=":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] == col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                        elif col_def['condition_type'] == ">":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] > col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                        elif col_def['condition_type'] == "<":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] < col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                        elif col_def['condition_type'] == ">=":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] >= col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                        elif col_def['condition_type'] == "<=":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] <= col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                        elif col_def['condition_type'] == "!=":
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] != col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                    elif col_def['type'] == 'arithmetic':
+                        if col_def['col1'] == "Custom Value" and col_def['val1']:
+                            val1_num = pd.to_numeric(col_def['val1'], errors='coerce')
+                            if pd.isna(val1_num):
+                                raise ValueError("Invalid numeric value for Col1")
+                            series1 = pd.Series([val1_num] * len(cleaned_df), index=cleaned_df.index)
+                        else:
+                            series1 = cleaned_df[col_def['col1']] if col_def['col1'] else pd.Series([0] * len(cleaned_df), index=cleaned_df.index)
+
+                        if col_def['col2'] == "Custom Value" and col_def['val2']:
+                            val2_num = pd.to_numeric(col_def['val2'], errors='coerce')
+                            if pd.isna(val2_num):
+                                raise ValueError("Invalid numeric value for Col2")
+                            series2 = pd.Series([val2_num] * len(cleaned_df), index=cleaned_df.index)
+                        else:
+                            series2 = cleaned_df[col_def['col2']] if col_def['col2'] else pd.Series([1] * len(cleaned_df), index=cleaned_df.index)
+
+                        series1 = pd.to_numeric(series1, errors='coerce')
+                        series2 = pd.to_numeric(series2, errors='coerce')
+                        if series1.isna().all() or series2.isna().all():
+                            raise ValueError("Columns or values must be numeric")
+
+                        if col_def['operation'] == "+":
+                            cleaned_df[col_def['name']] = series1 + series2
+                        elif col_def['operation'] == "-":
+                            cleaned_df[col_def['name']] = series1 - series2
+                        elif col_def['operation'] == "*":
+                            cleaned_df[col_def['name']] = series1 * series2
+                        elif col_def['operation'] == "/":
+                            cleaned_df[col_def['name']] = series1 / series2
+                            cleaned_df[col_def['name']] = cleaned_df[col_def['name']].replace([np.inf, -np.inf], np.nan).fillna(0)
+                        elif col_def['operation'] == "%":
+                            cleaned_df[col_def['name']] = series1 % series2
+                            cleaned_df[col_def['name']] = cleaned_df[col_def['name']].replace(np.nan, 0)
+                        elif col_def['operation'] == "**":
+                            cleaned_df[col_def['name']] = series1 ** series2
+                except Exception as e:
+                    st.error(f"Error applying column {col_def['name']}: {str(e)}")
+            st.session_state.cleaned_df = cleaned_df
+            st.session_state.history.append(cleaned_df.copy())
+            st.success("New columns added successfully!")
+            st.write("Updated Dataset Preview:")
+            st.dataframe(cleaned_df.head())
+
+    # Step 9: Generate Key Performance Indicators (KPIs)
+    st.header("Generate Key Performance Indicators (KPIs)")
+    kpi_option = st.checkbox("Generate KPIs from the dataset")
+    if kpi_option:
+        st.subheader("Define KPIs")
+        num_kpis = st.number_input("Number of KPIs to define", min_value=1, max_value=10, value=1, step=1)
+        kpi_definitions = []
+        for i in range(num_kpis):
+            st.write(f"### KPI {i+1}")
+            kpi_type = st.selectbox(f"Select KPI type for KPI {i+1}", ["Standard Aggregation", "Custom Formula"], key=f"kpi_type_{i}")
+            if kpi_type == "Standard Aggregation":
+                kpi_col = st.selectbox(f"Select column for KPI {i+1}", st.session_state.cleaned_df.columns, key=f"kpi_col_{i}")
+                agg_type = st.selectbox(f"Select aggregation type for KPI {i+1}", ["Mean", "Sum", "Count", "Max", "Min", "Percentage Above Threshold"], key=f"agg_type_{i}")
+                threshold = None
+                if agg_type == "Percentage Above Threshold":
+                    threshold = st.number_input(f"Enter threshold value for KPI {i+1}", value=0.0, key=f"threshold_{i}")
+            else:
+                formula_type = st.selectbox(f"Select custom formula for KPI {i+1}", ["(Col1 - Col2) / Col1", "Col1 / Col2", "Custom Expression"], key=f"formula_type_{i}")
+                if formula_type == "Custom Expression":
+                    custom_formula = st.text_input(f"Enter custom formula for KPI {i+1} (use column names)", key=f"custom_formula_{i}")
+                    col1 = None
+                    col2 = None
+                else:
+                    col1 = st.selectbox(f"Select first column for KPI {i+1}", st.session_state.cleaned_df.columns, key=f"col1_{i}")
+                    col2 = st.selectbox(f"Select second column for KPI {i+1}", [col for col in st.session_state.cleaned_df.columns if col != col1], key=f"col2_{i}")
+                    custom_formula = None
+            group_col = st.selectbox(f"Group by (optional) for KPI {i+1}", ["None"] + list(st.session_state.cleaned_df.columns), key=f"group_col_{i}")
+            if group_col == "None":
+                group_col = None
+            time_col = st.selectbox(f"Filter by time period (optional) for KPI {i+1}", ["None"] + list(st.session_state.cleaned_df.select_dtypes(include=['datetime', 'object']).columns), key=f"time_col_{i}")
+            time_filter = None
+            if time_col != "None":
+                try:
+                    if pd.api.types.is_object_dtype(st.session_state.cleaned_df[time_col]):
+                        st.session_state.cleaned_df[time_col] = pd.to_datetime(st.session_state.cleaned_df[time_col], errors='coerce')
+                    min_date = st.session_state.cleaned_df[time_col].min()
+                    max_date = st.session_state.cleaned_df[time_col].max()
+                    if pd.notna(min_date) and pd.notna(max_date):
+                        date_range = st.date_input(f"Select date range for KPI {i+1}", [min_date, max_date], min_value=min_date, max_value=max_date, key=f"date_range_{i}")
+                        if len(date_range) == 2:
+                            start_date, end_date = date_range
+                            time_filter = (st.session_state.cleaned_df[time_col] >= pd.to_datetime(start_date)) & (st.session_state.cleaned_df[time_col] <= pd.to_datetime(end_date))
+                except:
+                    st.warning(f"Invalid date format in time column for KPI {i+1}")
+            viz_type = st.selectbox(f"Visualization Type for KPI {i+1}", ["None", "Bar", "Pie", "Line"], key=f"viz_type_{i}")
+            kpi_definitions.append({
+                'type': kpi_type, 
+                'col': kpi_col if kpi_type == "Standard Aggregation" else None,
+                'agg_type': agg_type if kpi_type == "Standard Aggregation" else None, 
+                'threshold': threshold,
+                'formula_type': formula_type if kpi_type == "Custom Formula" else None,
+                'col1': col1,
+                'col2': col2,
+                'custom_formula': custom_formula,
+                'group_col': group_col, 
+                'time_filter': time_filter, 
+                'viz_type': viz_type,
+                'time_col': time_col if time_col != "None" else None
+            })
+        
+        if st.button("Calculate KPIs"):
+            kpi_results = []
+            all_kpi_dfs = []
+            for i, kpi_def in enumerate(kpi_definitions):
+                try:
+                    kpi_df = st.session_state.cleaned_df.copy()
+                    if kpi_def.get('time_filter') is not None:
+                        kpi_df = kpi_df[kpi_def['time_filter']]
+                    
+                    if kpi_def.get('type') == "Standard Aggregation":
+                        if kpi_def.get('agg_type') == "Percentage Above Threshold":
+                            if kpi_def.get('group_col'):
+                                kpi_result = kpi_df.groupby(kpi_def['group_col'])[kpi_def.get('col')].apply(lambda x: (x > kpi_def.get('threshold', 0.0)).mean() * 100).reset_index()
+                                kpi_result.columns = [kpi_def['group_col'], f"KPI_{i+1}"]
+                            else:
+                                kpi_value = (kpi_df[kpi_def.get('col')] > kpi_def.get('threshold', 0.0)).mean() * 100
+                                kpi_result = pd.DataFrame({f"KPI_{i+1}": [kpi_value]})
+                            label = f"Percentage of {kpi_def.get('col')} > {kpi_def.get('threshold', 0.0)}"
+                        else:
+                            agg_func = {'Mean': 'mean', 'Sum': 'sum', 'Count': 'count', 'Max': 'max', 'Min': 'min'}.get(kpi_def.get('agg_type'), 'mean')
+                            if kpi_def.get('group_col'):
+                                kpi_result = kpi_df.groupby(kpi_def['group_col'])[kpi_def.get('col')].agg(agg_func).reset_index()
+                                kpi_result.columns = [kpi_def['group_col'], f"KPI_{i+1}"]
+                            else:
+                                kpi_value = kpi_df[kpi_def.get('col')].agg(agg_func)
+                                kpi_result = pd.DataFrame({f"KPI_{i+1}": [kpi_value]})
+                            label = f"{kpi_def.get('agg_type', 'Mean')} of {kpi_def.get('col')}"
+                    else:
+                        if kpi_def.get('formula_type') == "Custom Expression":
+                            formula = kpi_def.get('custom_formula', '')
+                            if kpi_def.get('group_col'):
+                                kpi_result = kpi_df.groupby(kpi_def['group_col']).apply(lambda x: x.eval(formula).mean()).reset_index()
+                                kpi_result.columns = [kpi_def['group_col'], f"KPI_{i+1}"]
+                            else:
+                                kpi_value = kpi_df.eval(formula).mean()
+                                kpi_result = pd.DataFrame({f"KPI_{i+1}": [kpi_value]})
+                            label = f"Custom: {formula}"
+                        else:
+                            col1, col2 = kpi_def.get('col1'), kpi_def.get('col2')
+                            if col1 and col2:
+                                if kpi_def.get('formula_type') == "(Col1 - Col2) / Col1":
+                                    kpi_df['kpi_temp'] = (kpi_df[col1] - kpi_df[col2]) / kpi_df[col1]
+                                else:
+                                    kpi_df['kpi_temp'] = kpi_df[col1] / kpi_df[col2]
+                                if kpi_def.get('group_col'):
+                                    kpi_result = kpi_df.groupby(kpi_def['group_col'])['kpi_temp'].mean().reset_index()
+                                    kpi_result.columns = [kpi_def['group_col'], f"KPI_{i+1}"]
+                                else:
+                                    kpi_value = kpi_df['kpi_temp'].mean()
+                                    kpi_result = pd.DataFrame({f"KPI_{i+1}": [kpi_value]})
+                                label = f"{kpi_def.get('formula_type')} ({col1}, {col2})"
+                    
+                    all_kpi_dfs.append(kpi_result)
+                    
+                    if kpi_def.get('group_col'):
+                        for _, row in kpi_result.iterrows():
+                            value = f"{row[1]:.2f}"
+                            kpi_results.append({'label': label, 'value': value, 'group': f"{kpi_def['group_col']} = {row[0]}"})
+                    else:
+                        value = f"{kpi_result.iloc[0, 0]:.2f}"
+                        kpi_results.append({'label': label, 'value': value, 'group': None})
+                    
+                    if kpi_def.get('viz_type') != "None" and kpi_def.get('group_col'):
+                        st.subheader(f"Visualization for KPI {i+1}")
+                        x_col = kpi_result.columns[0]
+                        y_col = kpi_result.columns[1]
+                        if kpi_def.get('viz_type') == "Bar":
+                            fig = px.bar(kpi_result, x=x_col, y=y_col, title=label)
+                        elif kpi_def.get('viz_type') == "Pie":
+                            fig = px.pie(kpi_result, names=x_col, values=y_col, title=label)
+                        elif kpi_def.get('viz_type') == "Line":
+                            kpi_result = kpi_result.sort_values(x_col)
+                            fig = px.line(kpi_result, x=x_col, y=y_col, title=label)
+                        st.plotly_chart(fig)
+                except Exception as e:
+                    st.error(f"Error calculating KPI {i+1}: {str(e)}")
+            
+            st.subheader("KPI Results")
+            for kpi in kpi_results:
+                st.metric(label=kpi['label'] + (f" ({kpi['group']})" if kpi['group'] else ""), value=kpi['value'])
+            
+            if all_kpi_dfs:
+                st.subheader("All KPI Results Table")
+                try:
+                    combined_kpi_df = pd.concat(all_kpi_dfs, axis=1)
+                    combined_kpi_df = combined_kpi_df.loc[:, ~combined_kpi_df.columns.duplicated()]
+                    st.dataframe(combined_kpi_df)
+                    csv = combined_kpi_df.to_csv(index=False)
+                    st.download_button("Download KPIs as CSV", csv, "kpi_results.csv", "text/csv", key="download_kpis_csv")
+                    pdf_buffer = create_pdf_report(kpi_results)
+                    st.download_button("Download KPIs as PDF", pdf_buffer, "kpi_report.pdf", "application/pdf", key="download_kpis_pdf")
+                except:
+                    st.warning("Could not combine KPI results into table")
+
+    # Step 10: Visualization Section
+    st.header("Visualization")
+    st.write("Create custom visualizations based on your data.")
+    available_cols = st.session_state.cleaned_df.columns.tolist()
+    selected_cols = st.multiselect("Select columns for visualization", available_cols, key="viz_cols")
+    if selected_cols:
+        plot_types = ["Choose plot type"]
+        num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
+        cat_cols = st.session_state.cleaned_df.select_dtypes(include=['object']).columns
+        if len(selected_cols) >= 1:
+            plot_types.extend(["Line Plot", "Histogram", "Boxplot", "Pie Chart"])
+        if len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
+            plot_types.extend(["Scatter Plot", "Bar Graph", "Area Chart"])
+        if len(selected_cols) >= 2 and all(col in num_cols for col in selected_cols[:2]):
+            plot_types.append("Pairplot")
+        if len(num_cols) > 1 and any(col in selected_cols for col in num_cols):
+            plot_types.append("Heatmap")
+        if len(selected_cols) >= 2 and any(col in cat_cols for col in selected_cols):
+            plot_types.append("Grouped Bar Plot")
+        plot_type = st.selectbox("Select plot type", plot_types, key="viz_type")
+        if plot_type != "Choose plot type":
+            if plot_type == "Line Plot" and len(selected_cols) >= 1:
+                x_col = st.selectbox("Select X-axis", selected_cols, key="line_x")
+                if len(selected_cols) > 1:
+                    y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col != x_col], key="line_y")
+                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                else:
+                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=None, title=f"{plot_type}: {x_col}")
+                st.plotly_chart(fig)
+            elif plot_type == "Scatter Plot" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in num_cols], key="scatter_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="scatter_y")
+                if x_col and y_col:
+                    color_col = st.selectbox("Select color/group (optional)", ["None"] + [col for col in selected_cols if col not in [x_col, y_col]], key="scatter_color")
+                    if color_col == "None":
+                        color_col = None
+                    fig = px.scatter(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                    st.plotly_chart(fig)
+            elif plot_type == "Pairplot" and len(selected_cols) >= 2 and all(col in num_cols for col in selected_cols[:2]):
+                fig = sns.pairplot(st.session_state.cleaned_df[selected_cols])
+                st.pyplot(fig)
+            elif plot_type == "Heatmap" and len(num_cols) > 1 and any(col in selected_cols for col in num_cols):
+                corr_cols = [col for col in selected_cols if col in num_cols]
+                if len(corr_cols) > 1:
+                    corr = st.session_state.cleaned_df[corr_cols].corr()
+                    fig, ax = plt.subplots()
+                    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+                    st.pyplot(fig)
+                else:
+                    st.write("Need at least 2 numeric columns for heatmap.")
+            elif plot_type == "Histogram" and len(selected_cols) >= 1:
+                for col in selected_cols:
+                    fig, ax = plt.subplots()
+                    st.session_state.cleaned_df[col].hist(ax=ax)
+                    ax.set_title(f"{plot_type} of {col}")
+                    st.pyplot(fig)
+            elif plot_type == "Boxplot" and len(selected_cols) >= 1:
+                for col in selected_cols:
+                    fig, ax = plt.subplots()
+                    sns.boxplot(x=st.session_state.cleaned_df[col], ax=ax)
+                    ax.set_title(f"{plot_type} of {col}")
+                    st.pyplot(fig)
+            elif plot_type == "Pie Chart" and len(selected_cols) >= 1:
+                if any(col in cat_cols for col in selected_cols):
+                    names_col = st.selectbox("Select category column", [col for col in selected_cols if col in cat_cols], key="pie_names")
+                    if len(selected_cols) > 1 and any(col in num_cols for col in selected_cols):
+                        values_col = st.selectbox("Select values column", [col for col in selected_cols if col in num_cols and col != names_col], key="pie_values")
+                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=values_col, title=f"{plot_type}: {names_col} vs {values_col}")
+                    else:
+                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=None, title=f"{plot_type}: {names_col}")
+                    st.plotly_chart(fig)
+                else:
+                    st.write("Need at least one categorical column for pie chart.")
+            elif plot_type == "Bar Graph" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in cat_cols or col in num_cols], key="bar_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="bar_y")
+                if x_col and y_col:
+                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                    st.plotly_chart(fig)
+            elif plot_type == "Grouped Bar Plot" and len(selected_cols) >= 2 and any(col in cat_cols for col in selected_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in cat_cols], key="group_bar_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="group_bar_y")
+                color_col = st.selectbox("Select group column", [col for col in selected_cols if col in cat_cols and col != x_col], key="group_bar_color")
+                if x_col and y_col and color_col:
+                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{plot_type}: {y_col} by {x_col} and {color_col}")
+                    st.plotly_chart(fig)
+            elif plot_type == "Area Chart" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in num_cols], key="area_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="area_y")
+                if x_col and y_col:
+                    fig = px.area(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                    st.plotly_chart(fig)
+            else:
+                st.write(f"Invalid selection for {plot_type}. Check column types and selections.")
+
+    # Step 11: Machine Learning Predictions
+    st.header("Machine Learning Predictions")
+    if len(st.session_state.cleaned_df) < 10:
+        st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
+    else:
+        # Initialize session state for storing model and metadata
+        if 'model_pipeline' not in st.session_state:
+            st.session_state.model_pipeline = None
+        if 'model_name' not in st.session_state:
+            st.session_state.model_name = None
+        if 'task' not in st.session_state:
+            st.session_state.task = None
+        if 'feature_cols' not in st.session_state:
+            st.session_state.feature_cols = None
+        if 'num_cols' not in st.session_state:
+            st.session_state.num_cols = None
+        if 'cat_cols' not in st.session_state:
+            st.session_state.cat_cols = None
+        if 'target_col' not in st.session_state:
+            st.session_state.target_col = None
+
+        target_col = st.selectbox("Select target column for prediction", st.session_state.cleaned_df.columns)
+        if target_col:
+            unique_vals = st.session_state.cleaned_df[target_col].nunique()
+            if pd.api.types.is_object_dtype(st.session_state.cleaned_df[target_col]) or unique_vals <= 20:
+                task = 'classification'
+            else:
+                task = 'regression'
+            st.write(f"Detected task: {task.capitalize()} (based on target type and uniqueness)")
+            feature_cols = st.multiselect("Select feature columns", [col for col in st.session_state.cleaned_df.columns if col != target_col])
+            model_mode = st.radio("Model Selection Mode", ["Manual (select one)", "Auto-select best", "Compare top two"])
+            selected_model = None
+            if model_mode == "Manual (select one)":
+                if task == 'classification':
+                    model_options = ['RandomForest', 'XGBoost', 'LogisticRegression', 'SVM']
+                else:
+                    model_options = ['RandomForest', 'XGBoost', 'LinearRegression', 'SVM']
+                selected_model = st.selectbox("Select ML model", model_options)
+            use_smote = False
+            if task == 'classification':
+                use_smote = st.checkbox("Handle imbalanced classes with SMOTE")
+            if feature_cols and st.button("Run ML Model"):
+                with st.spinner("Training model(s)..."):
+                    try:
+                        X = st.session_state.cleaned_df[feature_cols]
+                        y = st.session_state.cleaned_df[target_col]
+                        if task == 'classification' and pd.api.types.is_object_dtype(y):
+                            y = y.astype('category').cat.codes
+                        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                        
+                        # Check for missing values
+                        if X_train.isna().any().any() or X_test.isna().any().any():
+                            st.error("Input data contains missing values. Please clean the data (e.g., fill or drop missing values) before running the model.")
+                            st.stop()
+                        
+                        # Identify numeric and categorical columns
+                        num_cols = X.select_dtypes(include=['float64', 'int64']).columns.tolist()
+                        cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+                        
+                        # Debug: Print selected columns
+                        st.write(f"Numeric columns: {num_cols}")
+                        st.write(f"Categorical columns: {cat_cols}")
+                        
+                        # Ensure at least one transformer is defined
+                        transformers = []
+                        if num_cols:
+                            transformers.append(('num', StandardScaler(), num_cols))
+                        if cat_cols:
+                            transformers.append(('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols))
+                        
+                        if not transformers:
+                            st.error("No valid numeric or categorical columns selected for preprocessing.")
+                            st.stop()
+                        
+                        preprocessor = ColumnTransformer(transformers=transformers)
+                        
+                        if task == 'classification':
+                            models = {
+                                'RandomForest': RandomForestClassifier(random_state=42),
+                                'XGBoost': XGBClassifier(random_state=42, enable_categorical=True),
+                                'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000),
+                                'SVM': SVC(random_state=42, probability=True)
+                            }
+                            metric_func = accuracy_score
+                            metric_name = 'Accuracy'
+                            is_higher_better = True
+                        else:
+                            models = {
+                                'RandomForest': RandomForestRegressor(random_state=42),
+                                'XGBoost': XGBRegressor(random_state=42, enable_categorical=True),
+                                'LinearRegression': LinearRegression(),
+                                'SVM': SVR()
+                            }
+                            metric_func = r2_score
+                            metric_name = 'R² Score'
+                            is_higher_better = True
+                        
+                        def build_pipeline(model):
+                            if use_smote and task == 'classification':
+                                return ImbPipeline(steps=[('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('model', model)])
+                            return Pipeline(steps=[('preprocessor', preprocessor), ('model', model)])
+                        
+                        results = {}
+                        if model_mode != "Manual (select one)":
+                            for name, model in models.items():
+                                pipeline = build_pipeline(model)
+                                pipeline.fit(X_train, y_train)
+                                y_pred = pipeline.predict(X_test)
+                                metric_value = metric_func(y_test, y_pred)
+                                results[name] = {'pipeline': pipeline, 'y_pred': y_pred, 'metric_value': metric_value}
+                            sorted_results = sorted(results.items(), key=lambda x: x[1]['metric_value'], reverse=is_higher_better)
+                        
+                        if model_mode == "Manual (select one)":
+                            model = models[selected_model]
+                            pipeline = build_pipeline(model)
+                            pipeline.fit(X_train, y_train)
+                            y_pred = pipeline.predict(X_test)
+                            if task == 'classification':
+                                metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
+                            else:
+                                metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
+                            st.subheader(f"Model: {selected_model}")
+                            st.text(metrics_text)
+                            st.subheader("Actual vs. Predicted")
+                            pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
+                            pred_df.rename(columns={'index': 'Index'}, inplace=True)
+                            st.dataframe(pred_df, hide_index=False)
+                            if task == 'classification':
+                                st.subheader("Confusion Matrix")
+                                cm = confusion_matrix(y_test, y_pred)
+                                fig, ax = plt.subplots()
+                                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+                                ax.set_xlabel('Predicted')
+                                ax.set_ylabel('Actual')
+                                st.pyplot(fig)
+                            else:
+                                st.subheader("Actual vs. Predicted Scatter Plot")
+                                fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
+                                st.plotly_chart(fig)
+                            if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
+                                st.subheader("Feature Importances")
+                                importances = pipeline.named_steps['model'].feature_importances_
+                                feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
+                                imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
+                                st.dataframe(imp_df)
+                            # Store model and metadata in session state
+                            st.session_state.model_pipeline = pipeline
+                            st.session_state.model_name = selected_model
+                            st.session_state.task = task
+                            st.session_state.feature_cols = feature_cols
+                            st.session_state.num_cols = num_cols
+                            st.session_state.cat_cols = cat_cols
+                            st.session_state.target_col = target_col
+                        elif model_mode == "Auto-select best":
+                            best_name, best_result = sorted_results[0]
+                            pipeline = best_result['pipeline']
+                            y_pred = best_result['y_pred']
+                            st.subheader(f"Best Model: {best_name} ({metric_name}: {best_result['metric_value']:.2f})")
+                            if task == 'classification':
+                                metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
+                                st.text(metrics_text)
+                                st.subheader("Classification Report")
+                                st.text(classification_report(y_test, y_pred))
+                            else:
+                                metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
+                                st.text(metrics_text)
+                            st.subheader("Actual vs. Predicted")
+                            pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
+                            pred_df.rename(columns={'index': 'Index'}, inplace=True)
+                            st.dataframe(pred_df, hide_index=False)
+                            if task == 'classification':
+                                st.subheader("Confusion Matrix")
+                                cm = confusion_matrix(y_test, y_pred)
+                                fig, ax = plt.subplots()
+                                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+                                ax.set_xlabel('Predicted')
+                                ax.set_ylabel('Actual')
+                                st.pyplot(fig)
+                            else:
+                                st.subheader("Actual vs. Predicted Scatter Plot")
+                                fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
+                                st.plotly_chart(fig)
+                            if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
+                                st.subheader("Feature Importances")
+                                importances = pipeline.named_steps['model'].feature_importances_
+                                feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
+                                imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
+                                st.dataframe(imp_df)
+                            # Store model and metadata in session state
+                            st.session_state.model_pipeline = pipeline
+                            st.session_state.model_name = best_name
+                            st.session_state.task = task
+                            st.session_state.feature_cols = feature_cols
+                            st.session_state.num_cols = num_cols
+                            st.session_state.cat_cols = cat_cols
+                            st.session_state.target_col = target_col
+                        elif model_mode == "Compare top two":
+                            col1, col2 = st.columns(2)
+                            for i, (name, result) in enumerate(sorted_results[:2]):
+                                pipeline = result['pipeline']
+                                y_pred = result['y_pred']
+                                with [col1, col2][i]:
+                                    st.subheader(f"Model: {name} ({metric_name}: {result['metric_value']:.2f})")
+                                    if task == 'classification':
+                                        metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
+                                    else:
+                                        metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
+                                    st.text(metrics_text)
+                                    st.subheader("Actual vs. Predicted")
+                                    pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
+                                    pred_df.rename(columns={'index': 'Index'}, inplace=True)
+                                    st.dataframe(pred_df, hide_index=False)
+                                    if task == 'classification':
+                                        st.subheader("Confusion Matrix")
+                                        cm = confusion_matrix(y_test, y_pred)
+                                        fig, ax = plt.subplots()
+                                        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+                                        ax.set_xlabel('Predicted')
+                                        ax.set_ylabel('Actual')
+                                        st.pyplot(fig)
+                                    else:
+                                        st.subheader("Actual vs. Predicted Scatter Plot")
+                                        fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
+                                        st.plotly_chart(fig)
+                                    if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
+                                        st.subheader("Feature Importances")
+                                        importances = pipeline.named_steps['model'].feature_importances_
+                                        feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
+                                        imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
+                                        st.dataframe(imp_df)
+                            # Store the best model (first of top two) in session state
+                            st.session_state.model_pipeline = sorted_results[0][1]['pipeline']
+                            st.session_state.model_name = sorted_results[0][0]
+                            st.session_state.task = task
+                            st.session_state.feature_cols = feature_cols
+                            st.session_state.num_cols = num_cols
+                            st.session_state.cat_cols = cat_cols
+                            st.session_state.target_col = target_col
+                    except (ValueError, TypeError, KeyError) as e:
+                        st.error(f"Error running model: {str(e)}. Check data types, missing values, or column selections.")
+                        st.stop()
+
+        # Prediction Input Section
+        if st.session_state.model_pipeline is not None and st.session_state.feature_cols is not None:
+            st.subheader("Make New Predictions with Trained Model")
+            prediction_mode = st.radio("Prediction Method", ["Manual Input", "Upload CSV"])
+            if prediction_mode == "Manual Input":
+                st.write(f"Enter values for the selected features to get a prediction from the trained {st.session_state.model_name} model.")
+                input_data = {}
+                for col in st.session_state.feature_cols:
+                    if col in st.session_state.num_cols:
+                        input_data[col] = st.number_input(f"Enter value for {col}", value=0.0, key=f"input_{col}")
+                    else:
+                        unique_vals = st.session_state.cleaned_df[col].dropna().unique().tolist()
+                        input_data[col] = st.selectbox(f"Select value for {col}", unique_vals, key=f"input_{col}")
+                if st.button("Predict"):
+                    try:
+                        input_df = pd.DataFrame([input_data], columns=st.session_state.feature_cols)
+                        prediction = st.session_state.model_pipeline.predict(input_df)[0]
+                        if st.session_state.task == 'classification':
+                            if pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.target_col]):
+                                unique_labels = st.session_state.cleaned_df[st.session_state.target_col].astype('category').cat.categories
+                                pred_label = unique_labels[int(prediction)]
+                                st.success(f"Prediction from {st.session_state.model_name}: **{pred_label}**")
+                            else:
+                                st.success(f"Prediction from {st.session_state.model_name}: **{prediction}**")
+                        else:
+                            st.success(f"Prediction from {st.session_state.model_name}: **{prediction:.2f}**")
+                    except Exception as e:
+                        st.error(f"Error making prediction: {str(e)}. Ensure input values match the expected format (numeric for {st.session_state.num_cols}, categorical for {st.session_state.cat_cols}).")
+            elif prediction_mode == "Upload CSV":
+                st.write(f"Upload a new CSV file with the same feature columns to get batch predictions from the trained {st.session_state.model_name} model.")
+                new_uploaded_file = st.file_uploader("Upload new CSV for predictions", type=["csv"], key="new_pred_file")
+                if new_uploaded_file is not None:
+                    try:
+                        new_df = pd.read_csv(new_uploaded_file)
+                        # Check if all required feature columns are present
+                        missing_cols = set(st.session_state.feature_cols) - set(new_df.columns)
+                        if missing_cols:
+                            st.error(f"Missing required feature columns in uploaded CSV: {missing_cols}")
+                            st.stop()
+                        # Make predictions
+                        predictions = st.session_state.model_pipeline.predict(new_df[st.session_state.feature_cols])
+                        # If classification and target was categorical, map back to labels
+                        if st.session_state.task == 'classification' and pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.target_col]):
+                            unique_labels = st.session_state.cleaned_df[st.session_state.target_col].astype('category').cat.categories
+                            predictions = [unique_labels[int(pred)] for pred in predictions]
+                        # Add predictions to the DataFrame
+                        new_df['Predicted'] = predictions
+                        st.subheader("Predictions on Uploaded Data")
+                        st.dataframe(new_df)
+                        # Optional: Download button for the predicted CSV
+                        csv = new_df.to_csv(index=False).encode('utf-8')
+                        st.download_button("Download Predictions as CSV", csv, "predictions.csv", "text/csv")
+                    except Exception as e:
+                        st.error(f"Error processing uploaded CSV: {str(e)}. Ensure the CSV has the correct feature columns and data types.")
+        elif st.session_state.model_pipeline is None:
+            st.info("Please run the model first to enable predictions.")
+
+
+# Footer
+st.markdown("""
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<div style='text-align: center; margin-top: 2rem; padding: 1rem; background-color: #f0f0f0; border-radius: 10px;'>
+    <div style='font-size: 1.2rem; color: #000000; font-weight: bold;'>✨Sankatos APP✨</div>
+    <div style='font-size: 0.9rem; color: #000000; margin-top: 0.2rem;'>Owner/Creator: Mohammed Zakyi</div>
+    <div style='font-size: 0.9rem; color: #333; margin-top: 0.5rem;'>
+        <div style='margin-bottom: 0.3rem;'>
+            <i class="fab fa-linkedin" style='margin-right: 8px;'></i>
+            <a href="[https://www.linkedin.com/in/mohammed-zakyi-399b2114a/]" target="_blank">LinkedIn Profile</a>
+        </div>
+        <div style='margin-bottom: 0.3rem;'>
+            <i class="fas fa-envelope" style='margin-right: 8px;'></i>
+            <a href="mailto:[Your Email Address]">mzakyi06240@ucumberlands.edu</a>
+        </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+
+
+
+
+
+# How to kill the port: lsof -i :8501 then kill -9 <PID>
+# To run the app: streamlit run Insights_app.py

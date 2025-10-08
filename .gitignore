@@ -11,4 +11,4 @@ venv/
 *.html
 *.pdf
 *.DS_Store
-
+.streamlit/

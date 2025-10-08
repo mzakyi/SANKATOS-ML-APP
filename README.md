@@ -56,7 +56,7 @@ To run the Sankatos App locally, follow these steps:
 
 4. **Run the App**:
    ```bash
-   streamlit run Perfect_code.py
+   streamlit run insights_app.py
    ```
    This opens the app in your default browser (e.g., `http://localhost:8501`).
 

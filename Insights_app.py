@@ -25,6 +25,11 @@ import base64
 from ydata_profiling import ProfileReport
 import tempfile
 import os
+import datetime
+import joblib
+
+
+
 
 # Cache data loading for performance
 @st.cache_data
@@ -185,7 +190,7 @@ st.markdown("""
 }
 </style>
 <div class="about-container">
-    <div class="about-title">About the Owner</div>
+    <div class="about-title">Owner/Creator</div>
     <div class="about-content">My name is Mohammed Zakyi and I am a data scientist specializing in machine learning and data analytics. I created this app to help users unlock insights from their data with ease. Feel free to contact me for collaborations or inquiries!
 </div>
 """, unsafe_allow_html=True)
@@ -847,9 +852,9 @@ if st.session_state.cleaned_df is not None:
         num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
         cat_cols = st.session_state.cleaned_df.select_dtypes(include=['object']).columns
         if len(viz_cols) >= 1:
-            plot_types.extend(["Line Plot", "Histogram", "Boxplot", "Pie Chart"])
-        if len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
-            plot_types.extend(["Scatter Plot", "Bar Graph", "Area Chart"])
+            plot_types.extend(["Histogram", "Boxplot", "Pie Chart"])
+        if len(viz_cols) >= 2:
+            plot_types.extend(["Line Plot", "Scatter Plot", "Bar Graph", "Area Chart"])
         if len(viz_cols) >= 2 and all(col in num_cols for col in viz_cols[:2]):
             plot_types.append("Pairplot")
         if len(num_cols) > 1 and any(col in viz_cols for col in num_cols):
@@ -864,15 +869,16 @@ if st.session_state.cleaned_df is not None:
             on_change=update_viz_type
         )
         if viz_type != "Choose plot type":
-            if viz_type == "Line Plot" and len(viz_cols) >= 1:
+            if viz_type == "Line Plot":
                 x_col = st.selectbox("Select X-axis", viz_cols, key="line_x")
-                if len(viz_cols) > 1:
-                    y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col != x_col], key="line_y")
+                y_cols = [col for col in viz_cols if col != x_col]
+                if y_cols:
+                    y_col = st.selectbox("Select Y-axis", y_cols, key="line_y")
                     fig = px.line(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{viz_type}: {y_col} vs {x_col}")
                 else:
-                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=None, title=f"{viz_type}: {x_col}")
+                    fig = px.line(st.session_state.cleaned_df, x=st.session_state.cleaned_df.index, y=x_col, title=f"{viz_type}: {x_col} vs Index")
                 st.plotly_chart(fig)
-            elif viz_type == "Scatter Plot" and len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
+            elif viz_type == "Scatter Plot" and any(col in num_cols for col in viz_cols):
                 x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in num_cols], key="scatter_x")
                 y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="scatter_y")
                 if x_col and y_col:
@@ -881,10 +887,10 @@ if st.session_state.cleaned_df is not None:
                         color_col = None
                     fig = px.scatter(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} vs {x_col}")
                     st.plotly_chart(fig)
-            elif viz_type == "Pairplot" and len(viz_cols) >= 2 and all(col in num_cols for col in viz_cols[:2]):
+            elif viz_type == "Pairplot" and all(col in num_cols for col in viz_cols[:2]):
                 fig = sns.pairplot(st.session_state.cleaned_df[viz_cols])
                 st.pyplot(fig)
-            elif viz_type == "Heatmap" and len(num_cols) > 1 and any(col in viz_cols for col in num_cols):
+            elif viz_type == "Heatmap" and any(col in viz_cols for col in num_cols):
                 corr_cols = [col for col in viz_cols if col in num_cols]
                 if len(corr_cols) > 1:
                     corr = st.session_state.cleaned_df[corr_cols].corr()
@@ -893,22 +899,22 @@ if st.session_state.cleaned_df is not None:
                     st.pyplot(fig)
                 else:
                     st.write("Need at least 2 numeric columns for heatmap.")
-            elif viz_type == "Histogram" and len(viz_cols) >= 1:
+            elif viz_type == "Histogram":
                 for col in viz_cols:
                     fig, ax = plt.subplots()
                     st.session_state.cleaned_df[col].hist(ax=ax)
                     ax.set_title(f"{viz_type} of {col}")
                     st.pyplot(fig)
-            elif viz_type == "Boxplot" and len(viz_cols) >= 1:
+            elif viz_type == "Boxplot":
                 for col in viz_cols:
                     fig, ax = plt.subplots()
                     sns.boxplot(x=st.session_state.cleaned_df[col], ax=ax)
                     ax.set_title(f"{viz_type} of {col}")
                     st.pyplot(fig)
-            elif viz_type == "Pie Chart" and len(viz_cols) >= 1:
+            elif viz_type == "Pie Chart":
                 if any(col in cat_cols for col in viz_cols):
                     names_col = st.selectbox("Select category column", [col for col in viz_cols if col in cat_cols], key="pie_names")
-                    if len(viz_cols) > 1 and any(col in num_cols for col in viz_cols):
+                    if any(col in num_cols for col in viz_cols):
                         values_col = st.selectbox("Select values column", [col for col in viz_cols if col in num_cols and col != names_col], key="pie_values")
                         fig = px.pie(st.session_state.cleaned_df, names=names_col, values=values_col, title=f"{viz_type}: {names_col} vs {values_col}")
                     else:
@@ -916,13 +922,19 @@ if st.session_state.cleaned_df is not None:
                     st.plotly_chart(fig)
                 else:
                     st.write("Need at least one categorical column for pie chart.")
-            elif viz_type == "Bar Graph" and len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
+            elif viz_type == "Bar Graph" and any(col in num_cols for col in viz_cols):
                 x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in cat_cols or col in num_cols], key="bar_x")
                 y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="bar_y")
                 if x_col and y_col:
                     fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{viz_type}: {y_col} vs {x_col}")
                     st.plotly_chart(fig)
-            elif viz_type == "Grouped Bar Plot" and len(viz_cols) >= 2 and any(col in cat_cols for col in viz_cols):
+            elif viz_type == "Area Chart" and any(col in num_cols for col in viz_cols):
+                x_col = st.selectbox("Select X-axis", viz_cols, key="area_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="area_y")
+                if x_col and y_col:
+                    fig = px.area(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{viz_type}: {y_col} vs {x_col}")
+                    st.plotly_chart(fig)
+            elif viz_type == "Grouped Bar Plot" and any(col in cat_cols for col in viz_cols):
                 x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in cat_cols], key="group_bar_x")
                 y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="group_bar_y")
                 color_col = st.selectbox("Select group column", [col for col in viz_cols if col in cat_cols and col != x_col], key="group_bar_color")
@@ -930,7 +942,7 @@ if st.session_state.cleaned_df is not None:
                     fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} by {x_col} and {color_col}")
                     st.plotly_chart(fig)
 
-  # Step 11: Machine Learning Predictions with Hyperparameter Tuning
+    # Step 11: Machine Learning Predictions with Hyperparameter Tuning
     st.header("Machine Learning Predictions")
     if len(st.session_state.cleaned_df) < 10:
         st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
@@ -1185,7 +1197,7 @@ if st.session_state.cleaned_df is not None:
                             st.session_state.task = task
                             st.session_state.best_params = best_result['best_params']
                         
-                        st.success("✅ Model training complete! The best model has been saved.")
+                        st.success("✅ Model training complete! The best model has been saved and can now be used to make new predictions.")
                         
                     except Exception as e:
                         st.error(f"Error running model: {str(e)}")
@@ -1256,5 +1268,6 @@ st.markdown("""
             <i class="fas fa-envelope" style='margin-right: 8px;'></i>
             <a href="mailto:mzakyi06240@ucumberlands.edu">mzakyi06240@ucumberlands.edu</a>
         </div>
+    </div>
 </div>
 """, unsafe_allow_html=True)

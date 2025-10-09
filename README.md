@@ -1,6 +1,6 @@
 # Sankatos App
 
-The Sankatos App is a powerful Streamlit-based tool for data analysis and machine learning. It allows users to upload CSV datasets, clean and preprocess data, generate detailed profile reports, create custom Key Performance Indicators (KPIs), explore insights with interactive visualizations, and build predictive models using automated or manual machine learning options with advanced hyperparameter tuning. Designed for data enthusiasts and professionals, the app provides a user-friendly interface to derive actionable insights from data.
+The Sankatos App is a powerful Streamlit-based tool for data analysis and machine learning. It allows users to upload CSV datasets, clean and preprocess data, generate detailed profile reports, explore insights with interactive visualizations, and build predictive models using automated or manual machine learning options with advanced hyperparameter tuning. Designed for data enthusiasts and professionals, the app provides a user-friendly interface to derive actionable insights from data.
 
 ## Features
 

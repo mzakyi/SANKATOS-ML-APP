@@ -1,9 +1,9 @@
 services:
-     - type: web
-       name: my-streamlit-app
-       env: python
-       buildCommand: pip install -r requirements.txt
-       startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
-       envVars:
-         - key: PYTHON_VERSION
-           value: 3.11.0
+  - type: web
+    name: my-streamlit-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run Insights_app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0  # Make sure this is 3.11, not 3.13

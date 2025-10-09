@@ -68,7 +68,7 @@ def create_pdf_report(kpi_results, filename="kpi_report.pdf"):
     buffer.seek(0)
     return buffer
 
-st.title("Dataset Cleaner, KPI Generator, Insights & ML Predictions App")
+st.title("Dataset Cleaner, Insights & ML Predictions App")
 
 # Initialize session state
 def initialize_session_state():

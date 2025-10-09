@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.svm import SVC, SVR
@@ -929,7 +930,7 @@ if st.session_state.cleaned_df is not None:
                     fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} by {x_col} and {color_col}")
                     st.plotly_chart(fig)
 
-    # Step 11: Machine Learning Predictions
+  # Step 11: Machine Learning Predictions with Hyperparameter Tuning
     st.header("Machine Learning Predictions")
     if len(st.session_state.cleaned_df) < 10:
         st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
@@ -966,9 +967,13 @@ if st.session_state.cleaned_df is not None:
             if model_mode == "Manual (select one)":
                 model_options = ['RandomForest', 'XGBoost', 'LogisticRegression', 'SVM'] if task == 'classification' else ['RandomForest', 'XGBoost', 'LinearRegression', 'SVM']
                 selected_model = st.selectbox("Select ML model", model_options, key="selected_model")
+            
+            # Add hyperparameter tuning option
+            use_tuning = st.checkbox("Use Hyperparameter Tuning (slower but better results)", value=True)
             use_smote = st.checkbox("Handle imbalanced classes with SMOTE") if task == 'classification' else False
+            
             if feature_cols and st.button("Run ML Model"):
-                with st.spinner("Training model(s)..."):
+                with st.spinner("Training model(s) with hyperparameter tuning..." if use_tuning else "Training model(s)..."):
                     try:
                         X = st.session_state.cleaned_df[feature_cols]
                         y = st.session_state.cleaned_df[target_col]
@@ -992,37 +997,136 @@ if st.session_state.cleaned_df is not None:
                             st.error("No valid numeric or categorical columns selected for preprocessing.")
                             st.stop()
                         preprocessor = ColumnTransformer(transformers=transformers)
+                        
+                        # Define base models
                         models = {
                             'RandomForest': RandomForestClassifier(random_state=42) if task == 'classification' else RandomForestRegressor(random_state=42),
                             'XGBoost': XGBClassifier(random_state=42, enable_categorical=True) if task == 'classification' else XGBRegressor(random_state=42, enable_categorical=True),
                             'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000) if task == 'classification' else LinearRegression(),
                             'SVM': SVC(random_state=42, probability=True) if task == 'classification' else SVR()
                         }
+                        
+                        # Define hyperparameter grids for tuning
+                        if task == 'classification':
+                            param_grids = {
+                                'RandomForest': {
+                                    'model__n_estimators': [100, 200, 300],
+                                    'model__max_depth': [10, 20, 30, None],
+                                    'model__min_samples_split': [2, 5, 10],
+                                    'model__min_samples_leaf': [1, 2, 4]
+                                },
+                                'XGBoost': {
+                                    'model__n_estimators': [100, 200, 300],
+                                    'model__learning_rate': [0.01, 0.1, 0.3],
+                                    'model__max_depth': [3, 5, 7],
+                                    'model__subsample': [0.8, 0.9, 1.0]
+                                },
+                                'LogisticRegression': {
+                                    'model__C': [0.01, 0.1, 1, 10, 100],
+                                    'model__penalty': ['l2'],
+                                    'model__solver': ['lbfgs', 'saga']
+                                },
+                                'SVM': {
+                                    'model__C': [0.1, 1, 10],
+                                    'model__kernel': ['rbf', 'linear'],
+                                    'model__gamma': ['scale', 'auto']
+                                }
+                            }
+                        else:  # regression
+                            param_grids = {
+                                'RandomForest': {
+                                    'model__n_estimators': [100, 200, 300],
+                                    'model__max_depth': [10, 20, 30, None],
+                                    'model__min_samples_split': [2, 5, 10],
+                                    'model__min_samples_leaf': [1, 2, 4]
+                                },
+                                'XGBoost': {
+                                    'model__n_estimators': [100, 200, 300],
+                                    'model__learning_rate': [0.01, 0.1, 0.3],
+                                    'model__max_depth': [3, 5, 7],
+                                    'model__subsample': [0.8, 0.9, 1.0]
+                                },
+                                'LinearRegression': {},  # No hyperparameters to tune
+                                'SVM': {
+                                    'model__C': [0.1, 1, 10],
+                                    'model__kernel': ['rbf', 'linear'],
+                                    'model__gamma': ['scale', 'auto']
+                                }
+                            }
+                        
                         def build_pipeline(model):
                             if use_smote and task == 'classification':
                                 return ImbPipeline(steps=[('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('model', model)])
                             return Pipeline(steps=[('preprocessor', preprocessor), ('model', model)])
+                        
+                        def train_with_tuning(name, model, param_grid):
+                            """Train model with hyperparameter tuning using GridSearchCV"""
+                            pipeline = build_pipeline(model)
+                            
+                            if use_tuning and param_grid:
+                                # Use GridSearchCV for hyperparameter tuning
+                                grid_search = GridSearchCV(
+                                    pipeline,
+                                    param_grid,
+                                    cv=5,  # 5-fold cross-validation
+                                    scoring='accuracy' if task == 'classification' else 'r2',
+                                    n_jobs=-1,  # Use all CPU cores
+                                    verbose=0
+                                )
+                                grid_search.fit(X_train, y_train)
+                                best_pipeline = grid_search.best_estimator_
+                                best_params = grid_search.best_params_
+                                return best_pipeline, best_params
+                            else:
+                                # Train with default parameters
+                                pipeline.fit(X_train, y_train)
+                                return pipeline, {}
+                        
                         results = {}
                         if model_mode != "Manual (select one)":
+                            # Train all models and find the best one
                             for name, model in models.items():
-                                pipeline = build_pipeline(model)
-                                pipeline.fit(X_train, y_train)
-                                y_pred = pipeline.predict(X_test)
+                                st.write(f"Training {name}...")
+                                best_pipeline, best_params = train_with_tuning(name, model, param_grids.get(name, {}))
+                                y_pred = best_pipeline.predict(X_test)
                                 metric_value = accuracy_score(y_test, y_pred) if task == 'classification' else r2_score(y_test, y_pred)
-                                results[name] = {'pipeline': pipeline, 'y_pred': y_pred, 'metric_value': metric_value}
+                                results[name] = {
+                                    'pipeline': best_pipeline,
+                                    'y_pred': y_pred,
+                                    'metric_value': metric_value,
+                                    'best_params': best_params
+                                }
                             sorted_results = sorted(results.items(), key=lambda x: x[1]['metric_value'], reverse=True)
-                        if model_mode == "Manual (select one)":
-                            model = models[selected_model]
-                            pipeline = build_pipeline(model)
-                            pipeline.fit(X_train, y_train)
-                            y_pred = pipeline.predict(X_test)
-                            metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
-                            st.subheader(f"Model: {selected_model}")
+                        
+                        def display_model_results(name, pipeline, y_pred, best_params=None):
+                            """Display model results including metrics, confusion matrix, and feature importance"""
+                            metric_name = "Accuracy" if task == 'classification' else "R² Score"
+                            metric_value = accuracy_score(y_test, y_pred) if task == 'classification' else r2_score(y_test, y_pred)
+                            
+                            st.subheader(f"Model: {name} ({metric_name}: {metric_value:.4f})")
+                            
+                            # Display best hyperparameters if tuning was used
+                            if best_params:
+                                st.write("**Best Hyperparameters:**")
+                                params_display = {k.replace('model__', ''): v for k, v in best_params.items()}
+                                st.json(params_display)
+                            
+                            # Display metrics
+                            if task == 'classification':
+                                metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.4f}\n" + classification_report(y_test, y_pred)
+                            else:
+                                mse = mean_squared_error(y_test, y_pred)
+                                r2 = r2_score(y_test, y_pred)
+                                metrics_text = f"Mean Squared Error: {mse:.4f}\nR² Score: {r2:.4f}"
                             st.text(metrics_text)
+                            
+                            # Actual vs Predicted
                             st.subheader("Actual vs. Predicted")
                             pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
                             pred_df.rename(columns={'index': 'Index'}, inplace=True)
                             st.dataframe(pred_df, hide_index=False)
+                            
+                            # Confusion Matrix or Scatter Plot
                             if task == 'classification':
                                 st.subheader("Confusion Matrix")
                                 cm = confusion_matrix(y_test, y_pred)
@@ -1033,85 +1137,60 @@ if st.session_state.cleaned_df is not None:
                                 st.pyplot(fig)
                             else:
                                 st.subheader("Actual vs. Predicted Scatter Plot")
-                                fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
+                                fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, 
+                                               trendline='ols', title='Actual vs. Predicted')
                                 st.plotly_chart(fig)
+                            
+                            # Feature Importances
                             if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
                                 st.subheader("Feature Importances")
                                 importances = pipeline.named_steps['model'].feature_importances_
                                 feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
                                 imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
                                 st.dataframe(imp_df)
-                            st.session_state.model_pipeline = pipeline
+                        
+                        # Display results based on model mode
+                        if model_mode == "Manual (select one)":
+                            st.write(f"Training {selected_model}...")
+                            model = models[selected_model]
+                            best_pipeline, best_params = train_with_tuning(selected_model, model, param_grids.get(selected_model, {}))
+                            y_pred = best_pipeline.predict(X_test)
+                            display_model_results(selected_model, best_pipeline, y_pred, best_params)
+                            st.session_state.model_pipeline = best_pipeline
                             st.session_state.model_name = selected_model
                             st.session_state.task = task
+                            st.session_state.best_params = best_params
+                            
                         elif model_mode == "Auto-select best":
                             best_name, best_result = sorted_results[0]
-                            pipeline = best_result['pipeline']
-                            y_pred = best_result['y_pred']
-                            st.subheader(f"Best Model: {best_name} (Accuracy: {best_result['metric_value']:.2f})")
-                            metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
-                            st.text(metrics_text)
-                            st.subheader("Actual vs. Predicted")
-                            pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
-                            pred_df.rename(columns={'index': 'Index'}, inplace=True)
-                            st.dataframe(pred_df, hide_index=False)
-                            if task == 'classification':
-                                st.subheader("Confusion Matrix")
-                                cm = confusion_matrix(y_test, y_pred)
-                                fig, ax = plt.subplots()
-                                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-                                ax.set_xlabel('Predicted')
-                                ax.set_ylabel('Actual')
-                                st.pyplot(fig)
-                            else:
-                                st.subheader("Actual vs. Predicted Scatter Plot")
-                                fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
-                                st.plotly_chart(fig)
-                            if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
-                                st.subheader("Feature Importances")
-                                importances = pipeline.named_steps['model'].feature_importances_
-                                feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
-                                imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
-                                st.dataframe(imp_df)
-                            st.session_state.model_pipeline = pipeline
+                            st.success(f"🏆 Best Model: {best_name}")
+                            display_model_results(best_name, best_result['pipeline'], best_result['y_pred'], best_result['best_params'])
+                            st.session_state.model_pipeline = best_result['pipeline']
                             st.session_state.model_name = best_name
                             st.session_state.task = task
+                            st.session_state.best_params = best_result['best_params']
+                            
                         elif model_mode == "Compare top two":
                             col1, col2 = st.columns(2)
                             for i, (name, result) in enumerate(sorted_results[:2]):
-                                pipeline = result['pipeline']
-                                y_pred = result['y_pred']
                                 with [col1, col2][i]:
-                                    st.subheader(f"Model: {name} (Accuracy: {result['metric_value']:.2f})")
-                                    metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
-                                    st.text(metrics_text)
-                                    st.subheader("Actual vs. Predicted")
-                                    pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
-                                    pred_df.rename(columns={'index': 'Index'}, inplace=True)
-                                    st.dataframe(pred_df, hide_index=False)
-                                    if task == 'classification':
-                                        st.subheader("Confusion Matrix")
-                                        cm = confusion_matrix(y_test, y_pred)
-                                        fig, ax = plt.subplots()
-                                        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-                                        ax.set_xlabel('Predicted')
-                                        ax.set_ylabel('Actual')
-                                        st.pyplot(fig)
-                                    else:
-                                        st.subheader("Actual vs. Predicted Scatter Plot")
-                                        fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, trendline='ols', title='Actual vs. Predicted')
-                                        st.plotly_chart(fig)
-                                    if hasattr(pipeline.named_steps['model'], 'feature_importances_'):
-                                        st.subheader("Feature Importances")
-                                        importances = pipeline.named_steps['model'].feature_importances_
-                                        feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
-                                        imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
-                                        st.dataframe(imp_df)
-                            st.session_state.model_pipeline = sorted_results[0][1]['pipeline']
-                            st.session_state.model_name = sorted_results[0][0]
+                                    rank = "🥇 Best" if i == 0 else "🥈 Second Best"
+                                    st.info(rank)
+                                    display_model_results(name, result['pipeline'], result['y_pred'], result['best_params'])
+                            
+                            # Save the best model
+                            best_name, best_result = sorted_results[0]
+                            st.session_state.model_pipeline = best_result['pipeline']
+                            st.session_state.model_name = best_name
                             st.session_state.task = task
+                            st.session_state.best_params = best_result['best_params']
+                        
+                        st.success("✅ Model training complete! The best model has been saved.")
+                        
                     except Exception as e:
                         st.error(f"Error running model: {str(e)}")
+                        import traceback
+                        st.error(traceback.format_exc())
 
         # Prediction Input Section
         if st.session_state.model_pipeline is not None and st.session_state.selected_feature_cols:

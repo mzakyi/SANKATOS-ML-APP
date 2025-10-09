@@ -27,7 +27,8 @@ import tempfile
 import os
 import datetime
 import joblib
-
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 
 
@@ -68,7 +69,7 @@ def create_pdf_report(kpi_results, filename="kpi_report.pdf"):
     buffer.seek(0)
     return buffer
 
-st.title("Dataset Cleaner, KPI Generator, Insights & ML Predictions App")
+st.title("Dataset Cleaner, Insights & ML Predictions App")
 
 # Initialize session state
 def initialize_session_state():
@@ -724,6 +725,7 @@ if st.session_state.cleaned_df is not None:
                 else:
                     fig = px.line(st.session_state.cleaned_df, x=st.session_state.cleaned_df.index, y=x_col, title=f"{viz_type}: {x_col} vs Index")
                 st.plotly_chart(fig)
+                
             elif viz_type == "Scatter Plot" and any(col in num_cols for col in viz_cols):
                 x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in num_cols], key="scatter_x")
                 y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="scatter_y")
@@ -745,6 +747,7 @@ if st.session_state.cleaned_df is not None:
                     st.pyplot(fig)
                 else:
                     st.write("Need at least 2 numeric columns for heatmap.")
+                    
             elif viz_type == "Histogram":
                 for col in viz_cols:
                     fig, ax = plt.subplots()
@@ -788,7 +791,7 @@ if st.session_state.cleaned_df is not None:
                     fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} by {x_col} and {color_col}")
                     st.plotly_chart(fig)
 
-    # Step 11: Machine Learning Predictions with Hyperparameter Tuning
+# Step 11: Machine Learning Predictions with Hyperparameter Tuning
     st.header("Machine Learning Predictions")
     if len(st.session_state.cleaned_df) < 10:
         st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")

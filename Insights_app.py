@@ -1,5 +1,3 @@
-
-import git
 import streamlit as st
 import pandas as pd
 import seaborn as sns
@@ -66,13 +64,61 @@ def create_pdf_report(kpi_results, filename="kpi_report.pdf"):
 
 st.title("Dataset Cleaner, KPI Generator, Insights & ML Predictions App")
 
-# INSERTION POINT 1: Description Section
+# Initialize session state
+def initialize_session_state():
+    if 'cleaned_df' not in st.session_state:
+        st.session_state.cleaned_df = None
+    if 'history' not in st.session_state:
+        st.session_state.history = []
+    if 'last_uploaded_file' not in st.session_state:
+        st.session_state.last_uploaded_file = None
+    if 'selected_insight_options' not in st.session_state:
+        st.session_state.selected_insight_options = []
+    if 'selected_clean_options' not in st.session_state:
+        st.session_state.selected_clean_options = []
+    if 'selected_change_types' not in st.session_state:
+        st.session_state.selected_change_types = []
+    if 'selected_delete_cols' not in st.session_state:
+        st.session_state.selected_delete_cols = []
+    if 'rename_cols' not in st.session_state:
+        st.session_state.rename_cols = {}
+    if 'new_columns' not in st.session_state:
+        st.session_state.new_columns = []
+    if 'kpi_definitions' not in st.session_state:
+        st.session_state.kpi_definitions = []
+    if 'selected_viz_cols' not in st.session_state:
+        st.session_state.selected_viz_cols = []
+    if 'selected_viz_type' not in st.session_state:
+        st.session_state.selected_viz_type = "Choose plot type"
+    if 'model_pipeline' not in st.session_state:
+        st.session_state.model_pipeline = None
+    if 'model_name' not in st.session_state:
+        st.session_state.model_name = None
+    if 'task' not in st.session_state:
+        st.session_state.task = None
+    if 'selected_feature_cols' not in st.session_state:
+        st.session_state.selected_feature_cols = []
+    if 'num_cols' not in st.session_state:
+        st.session_state.num_cols = []
+    if 'cat_cols' not in st.session_state:
+        st.session_state.cat_cols = []
+    if 'selected_target_col' not in st.session_state:
+        st.session_state.selected_target_col = None
+
+initialize_session_state()
+
+# Ensure rename_cols is a dictionary
+if not isinstance(st.session_state.rename_cols, dict):
+    st.warning("Session state 'rename_cols' was not a dictionary. Resetting to empty dictionary.")
+    st.session_state.rename_cols = {}
+
+# Description Section
 st.markdown("""
 ### Welcome to the Sankatos App
 The Sankatos App is a powerful tool for data analysis and machine learning. Upload your CSV dataset to clean and preprocess data, generate detailed profile reports, explore insights with interactive visualizations, define custom KPIs, and build predictive models with automated or manual ML options. Perfect for data enthusiasts and professionals seeking actionable insights.
 """)
 
-# ADD LOGO HERE - Circular "S" in top left corner
+# Logo
 st.markdown("""
 <style>
 .logo-container {
@@ -111,7 +157,7 @@ z-index: 999;
 </div>
 """, unsafe_allow_html=True)
 
-# INSERTION POINT 2: About Section
+# About Section
 st.markdown("""
 <style>
 .about-container {
@@ -143,14 +189,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Initialize session state for cleaned_df and history
-if 'cleaned_df' not in st.session_state:
-    st.session_state.cleaned_df = None
-if 'history' not in st.session_state:
-    st.session_state.history = []
-if 'last_uploaded_file' not in st.session_state:
-    st.session_state.last_uploaded_file = None
-
 # Step 1: Data Loading
 uploaded_file = st.file_uploader("Upload your CSV dataset", type=["csv"])
 
@@ -163,10 +201,21 @@ if uploaded_file is not None:
         st.session_state.model_pipeline = None
         st.session_state.model_name = None
         st.session_state.task = None
-        st.session_state.feature_cols = None
-        st.session_state.num_cols = None
-        st.session_state.cat_cols = None
-        st.session_state.target_col = None
+        st.session_state.selected_feature_cols = []
+        st.session_state.num_cols = []
+        st.session_state.cat_cols = []
+        st.session_state.selected_target_col = None
+        st.session_state.selected_insight_options = []
+        st.session_state.selected_clean_options = []
+        st.session_state.selected_change_types = []
+        st.session_state.selected_delete_cols = []
+        st.session_state.rename_cols = {}
+        st.session_state.new_columns = []
+        st.session_state.kpi_definitions = []
+        st.session_state.selected_viz_cols = []
+        st.session_state.selected_viz_type = "Choose plot type"
+
+if st.session_state.cleaned_df is not None:
     df = st.session_state.cleaned_df
     st.write("Original Dataset Preview:")
     st.dataframe(df.head())
@@ -174,8 +223,18 @@ if uploaded_file is not None:
     # Undo Last Action Button
     if len(st.session_state.history) > 1:
         if st.button("Undo Last Action"):
-            st.session_state.history.pop()  # Remove the latest state
+            st.session_state.history.pop()
             st.session_state.cleaned_df = st.session_state.history[-1].copy()
+            # Clean up session state for deleted or renamed columns
+            if not isinstance(st.session_state.rename_cols, dict):
+                st.session_state.rename_cols = {}
+            st.session_state.rename_cols = {k: v for k, v in st.session_state.rename_cols.items() if k in st.session_state.cleaned_df.columns}
+            st.session_state.selected_change_types = [col for col in st.session_state.selected_change_types if col in st.session_state.cleaned_df.columns]
+            st.session_state.selected_delete_cols = [col for col in st.session_state.selected_delete_cols if col in st.session_state.cleaned_df.columns]
+            st.session_state.selected_viz_cols = [col for col in st.session_state.selected_viz_cols if col in st.session_state.cleaned_df.columns]
+            st.session_state.selected_feature_cols = [col for col in st.session_state.selected_feature_cols if col in st.session_state.cleaned_df.columns]
+            if st.session_state.selected_target_col not in st.session_state.cleaned_df.columns:
+                st.session_state.selected_target_col = None
             st.success("Last action undone. Dataset restored to previous state.")
             st.rerun()
 
@@ -183,11 +242,9 @@ if uploaded_file is not None:
     st.header("Dataset Profiling")
     st.write("Generate profile reports to analyze the dataset before and after cleaning.")
     
-    # Display warning for large datasets before initial profile button
     if len(df) > 10000 or len(df.columns) > 50:
-        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues. Consider using a smaller dataset or enabling minimal mode (already enabled).")
+        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues.")
     
-    # Option to generate initial dataset profile
     if st.button("Generate Initial Dataset Profile Report"):
         with st.spinner("Generating initial profile report..."):
             try:
@@ -202,13 +259,15 @@ if uploaded_file is not None:
                 href = f'<a href="data:text/html;base64,{b64}" download="initial_profile_report.html">Download Initial Profile Report</a>'
                 st.markdown(href, unsafe_allow_html=True)
                 os.unlink(tmp_file.name)
-            except ImportError:
-                st.error("Error: ydata-profiling is not installed. Please install it using `pip install ydata-profiling`.")
             except Exception as e:
                 st.error(f"Error generating initial profile report: {str(e)}")
 
     # Step 3: Data Cleaning Options
     st.header("Clean the Dataset")
+    
+    def update_clean_options():
+        st.session_state.selected_clean_options = st.session_state.clean_options
+    
     clean_options = st.multiselect(
         "Select cleaning steps:",
         [
@@ -218,7 +277,9 @@ if uploaded_file is not None:
             "Convert columns to numeric (if possible)",
             "Remove outliers (IQR method for numeric columns)"
         ],
-        key="clean_options"
+        default=st.session_state.selected_clean_options,
+        key="clean_options",
+        on_change=update_clean_options
     )
 
     if clean_options and st.button("Apply Cleaning"):
@@ -246,23 +307,21 @@ if uploaded_file is not None:
                 lower_bound = Q1 - 1.5 * IQR
                 upper_bound = Q3 + 1.5 * IQR
                 cleaned_df = cleaned_df[(cleaned_df[col] >= lower_bound) & (cleaned_df[col] <= upper_bound)]
-        # Update session state
         st.session_state.cleaned_df = cleaned_df
         st.session_state.history.append(cleaned_df.copy())
+        st.session_state.selected_clean_options = clean_options
         st.success("Cleaning applied successfully!")
         st.write("Cleaned Dataset Preview:")
         st.dataframe(cleaned_df.head())
-        st.download_button("Download Cleaned CSV", cleaned_df.to_csv(index=False), file_name="cleaned_dataset.csv", key="download_cleaned_csv")
+        st.download_button("Download Cleaned CSV", cleaned_df.to_csv(index=False), file_name="cleaned_dataset.csv")
     else:
         st.write("Current Dataset Preview:")
         st.dataframe(st.session_state.cleaned_df.head())
-        st.download_button("Download Current CSV", st.session_state.cleaned_df.to_csv(index=False), file_name="current_dataset.csv", key="download_current_csv")
+        st.download_button("Download Current CSV", st.session_state.cleaned_df.to_csv(index=False), file_name="current_dataset.csv")
 
-    # Display warning for large datasets before cleaned profile button
     if len(st.session_state.cleaned_df) > 10000 or len(st.session_state.cleaned_df.columns) > 50:
-        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues. Consider using a smaller dataset or enabling minimal mode (already enabled).")
+        st.warning("Large dataset detected (>10,000 rows or >50 columns). Profile report generation may take time or cause memory issues.")
     
-    # Option to generate cleaned dataset profile
     if st.button("Generate Cleaned Dataset Profile Report"):
         with st.spinner("Generating cleaned profile report..."):
             try:
@@ -277,19 +336,23 @@ if uploaded_file is not None:
                 href = f'<a href="data:text/html;base64,{b64}" download="cleaned_profile_report.html">Download Cleaned Profile Report</a>'
                 st.markdown(href, unsafe_allow_html=True)
                 os.unlink(tmp_file.name)
-            except ImportError:
-                st.error("Error: ydata-profiling is not installed. Please install it using `pip install ydata-profiling`.")
             except Exception as e:
                 st.error(f"Error generating cleaned profile report: {str(e)}")
 
-    # Step 4: Exploring The Dataset with Filters
+    # Step 4: Exploring The Dataset
     st.header("Exploring The Dataset")
+    
+    def update_insight_options():
+        st.session_state.selected_insight_options = st.session_state.insight_options
+    
     insight_options = st.multiselect(
         "Choose insights to display:",
         ["Summary Statistics", "Value Counts (for categorical columns)", "Unique Values & Counts by Column", 
          "Correlation Heatmap", "Histogram for Numeric Columns", "Box Plot for Numeric Columns", 
          "Strong Correlations", "Data Types", "Describe", "Info"],
-        key="insight_options"
+        default=st.session_state.selected_insight_options,
+        key="insight_options",
+        on_change=update_insight_options
     )
 
     if "Summary Statistics" in insight_options:
@@ -310,14 +373,12 @@ if uploaded_file is not None:
             st.session_state.cleaned_df.columns.tolist(),
             key="unique_cols_select"
         )
-        
         if selected_cols_for_unique:
             for col in selected_cols_for_unique:
                 with st.expander(f"📊 {col} - Unique Values & Counts"):
                     unique_count = st.session_state.cleaned_df[col].nunique()
                     total_count = len(st.session_state.cleaned_df[col])
                     null_count = st.session_state.cleaned_df[col].isnull().sum()
-                    
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Unique Values", unique_count)
@@ -325,13 +386,11 @@ if uploaded_file is not None:
                         st.metric("Total Records", total_count)
                     with col3:
                         st.metric("Null Values", null_count)
-                    
                     st.write("**Value Counts:**")
                     value_counts_df = st.session_state.cleaned_df[col].value_counts().reset_index()
                     value_counts_df.columns = [col, 'Count']
                     value_counts_df['Percentage'] = (value_counts_df['Count'] / total_count * 100).round(2)
                     st.dataframe(value_counts_df, use_container_width=True)
-                    
                     if len(value_counts_df) > 0:
                         top_n = min(10, len(value_counts_df))
                         fig = px.bar(
@@ -342,8 +401,6 @@ if uploaded_file is not None:
                             labels={col: col, 'Count': 'Frequency'}
                         )
                         st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Please select columns to view their unique values and counts.")
 
     if "Correlation Heatmap" in insight_options:
         st.subheader("Correlation Heatmap")
@@ -393,8 +450,6 @@ if uploaded_file is not None:
                 st.dataframe(corr_df)
             else:
                 st.write("No strong correlations (|r| > 0.7) found among numeric columns.")
-        else:
-            st.write("Need at least 2 numeric columns to calculate correlations.")
 
     if "Data Types" in insight_options:
         st.subheader("Data Types")
@@ -412,11 +467,24 @@ if uploaded_file is not None:
 
     # Step 5: Change Data Types
     st.header("Change Data Types")
-    change_types = st.multiselect("Select columns to change data type", st.session_state.cleaned_df.columns, key="change_types")
+    
+    def update_change_types():
+        st.session_state.selected_change_types = st.session_state.change_types
+    
+    change_types = st.multiselect(
+        "Select columns to change data type",
+        st.session_state.cleaned_df.columns,
+        default=[col for col in st.session_state.selected_change_types if col in st.session_state.cleaned_df.columns],
+        key="change_types",
+        on_change=update_change_types
+    )
+    
     if change_types:
         type_changes = {}
         for col in change_types:
-            new_type = st.selectbox(f"New data type for {col}", ["int64", "float64", "object", "category"], key=f"type_{col}")
+            current_type = str(st.session_state.cleaned_df[col].dtype)
+            default_index = ["int64", "float64", "object", "category"].index(current_type) if current_type in ["int64", "float64", "object", "category"] else 2
+            new_type = st.selectbox(f"New data type for {col}", ["int64", "float64", "object", "category"], key=f"type_{col}", index=default_index)
             type_changes[col] = new_type
         if type_changes and st.button("Apply Data Type Changes"):
             cleaned_df = st.session_state.cleaned_df.copy()
@@ -427,39 +495,87 @@ if uploaded_file is not None:
                     st.error(f"Error converting {col} to {dtype}: {str(e)}")
             st.session_state.cleaned_df = cleaned_df
             st.session_state.history.append(cleaned_df.copy())
+            st.session_state.selected_change_types = change_types
             st.success("Data type changes applied successfully!")
             st.write("Updated Dataset Preview:")
             st.dataframe(cleaned_df.head())
 
     # Step 6: Delete Columns
     st.header("Delete Columns")
-    delete_cols = st.multiselect("Select columns to delete", st.session_state.cleaned_df.columns, key="delete_cols")
+    
+    def update_delete_cols():
+        st.session_state.selected_delete_cols = st.session_state.delete_cols
+    
+    delete_cols = st.multiselect(
+        "Select columns to delete",
+        st.session_state.cleaned_df.columns,
+        default=[col for col in st.session_state.selected_delete_cols if col in st.session_state.cleaned_df.columns],
+        key="delete_cols",
+        on_change=update_delete_cols
+    )
+    
     if delete_cols and st.button("Delete Selected Columns"):
         cleaned_df = st.session_state.cleaned_df.drop(columns=delete_cols)
         st.session_state.cleaned_df = cleaned_df
         st.session_state.history.append(cleaned_df.copy())
+        st.session_state.selected_delete_cols = []
+        # Clean up other session state variables
+        if not isinstance(st.session_state.rename_cols, dict):
+            st.session_state.rename_cols = {}
+        st.session_state.rename_cols = {k: v for k, v in st.session_state.rename_cols.items() if k not in delete_cols}
+        st.session_state.selected_change_types = [col for col in st.session_state.selected_change_types if col not in delete_cols]
+        st.session_state.selected_viz_cols = [col for col in st.session_state.selected_viz_cols if col not in delete_cols]
+        st.session_state.selected_feature_cols = [col for col in st.session_state.selected_feature_cols if col not in delete_cols]
+        if st.session_state.selected_target_col in delete_cols:
+            st.session_state.selected_target_col = None
         st.success("Selected columns deleted successfully!")
         st.write("Updated Dataset Preview:")
         st.dataframe(cleaned_df.head())
 
-    # Step 7: Rename Columns
+    # Step 7: Rename Columns - FIXED SECTION
     st.header("Rename Columns")
-    rename_cols = st.multiselect("Select columns to rename", st.session_state.cleaned_df.columns, key="rename_cols")
-    if rename_cols:
-        new_names = {}
-        for col in rename_cols:
-            new_name = st.text_input(f"New name for {col}", value=col, key=f"rename_{col}")
-            if new_name and new_name != col:
-                new_names[col] = new_name
-        if new_names and st.button("Apply Renames"):
-            cleaned_df = st.session_state.cleaned_df.rename(columns=new_names)
-            st.session_state.cleaned_df = cleaned_df
-            st.session_state.history.append(cleaned_df.copy())
-            st.success("Columns renamed successfully!")
-            st.write("Updated Dataset Preview:")
-            st.dataframe(cleaned_df.head())
+    if not isinstance(st.session_state.rename_cols, dict):
+        st.warning("Session state 'rename_cols' was not a dictionary. Resetting to empty dictionary.")
+        st.session_state.rename_cols = {}
+    
+    # Get valid columns that exist in the current dataframe
+    valid_rename_cols = [col for col in st.session_state.rename_cols.keys() if col in st.session_state.cleaned_df.columns]
+    
+    # Use empty list as default if valid_rename_cols is empty
+    rename_cols = st.multiselect(
+        "Select columns to rename",
+        st.session_state.cleaned_df.columns,
+        default=valid_rename_cols if valid_rename_cols else [],  # FIX: Use empty list when no valid columns
+        key="rename_cols_select"  # Changed key name to avoid conflict
+    )
+    
+    new_names = {}
+    for col in rename_cols:
+        default_name = st.session_state.rename_cols.get(col, col)
+        new_name = st.text_input(f"New name for {col}", value=default_name, key=f"rename_{col}")
+        if new_name and new_name != col and new_name not in st.session_state.cleaned_df.columns:
+            new_names[col] = new_name
+    if new_names and st.button("Apply Renames"):
+        cleaned_df = st.session_state.cleaned_df.rename(columns=new_names)
+        st.session_state.cleaned_df = cleaned_df
+        st.session_state.history.append(cleaned_df.copy())
+        # Update rename_cols: remove old mappings, add new ones
+        if not isinstance(st.session_state.rename_cols, dict):
+            st.session_state.rename_cols = {}
+        st.session_state.rename_cols = {k: v for k, v in st.session_state.rename_cols.items() if k not in new_names}
+        st.session_state.rename_cols.update(new_names)
+        # Update other session state variables
+        st.session_state.selected_change_types = [new_names.get(col, col) for col in st.session_state.selected_change_types if col in st.session_state.cleaned_df.columns or col in new_names]
+        st.session_state.selected_delete_cols = [new_names.get(col, col) for col in st.session_state.selected_delete_cols if col in st.session_state.cleaned_df.columns or col in new_names]
+        st.session_state.selected_viz_cols = [new_names.get(col, col) for col in st.session_state.selected_viz_cols if col in st.session_state.cleaned_df.columns or col in new_names]
+        st.session_state.selected_feature_cols = [new_names.get(col, col) for col in st.session_state.selected_feature_cols if col in st.session_state.cleaned_df.columns or col in new_names]
+        if st.session_state.selected_target_col in new_names:
+            st.session_state.selected_target_col = new_names[st.session_state.selected_target_col]
+        st.success("Columns renamed successfully!")
+        st.write("Updated Dataset Preview:")
+        st.dataframe(cleaned_df.head())
 
-    # Step 8: Add New Columns with Conditions or Arithmetic
+    # Step 8: Add New Columns
     st.header("Add New Columns with Conditions or Arithmetic")
     add_columns = st.checkbox("Add new columns based on conditions or arithmetic")
     if add_columns:
@@ -496,18 +612,19 @@ if uploaded_file is not None:
             for col_def in column_definitions:
                 try:
                     if col_def['type'] == 'if-else':
+                        condition_value = pd.to_numeric(col_def['condition_value'], errors='coerce') if col_def['condition_type'] in [">", "<", ">=", "<="] else col_def['condition_value']
                         if col_def['condition_type'] == "=":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] == col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] == condition_value, col_def['true_value'], col_def['false_value'])
                         elif col_def['condition_type'] == ">":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] > col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] > condition_value, col_def['true_value'], col_def['false_value'])
                         elif col_def['condition_type'] == "<":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] < col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] < condition_value, col_def['true_value'], col_def['false_value'])
                         elif col_def['condition_type'] == ">=":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] >= col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] >= condition_value, col_def['true_value'], col_def['false_value'])
                         elif col_def['condition_type'] == "<=":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] <= col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] <= condition_value, col_def['true_value'], col_def['false_value'])
                         elif col_def['condition_type'] == "!=":
-                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] != col_def['condition_value'], col_def['true_value'], col_def['false_value'])
+                            cleaned_df[col_def['name']] = np.where(cleaned_df[col_def['condition_col']] != condition_value, col_def['true_value'], col_def['false_value'])
                     elif col_def['type'] == 'arithmetic':
                         if col_def['col1'] == "Custom Value" and col_def['val1']:
                             val1_num = pd.to_numeric(col_def['val1'], errors='coerce')
@@ -516,7 +633,6 @@ if uploaded_file is not None:
                             series1 = pd.Series([val1_num] * len(cleaned_df), index=cleaned_df.index)
                         else:
                             series1 = cleaned_df[col_def['col1']] if col_def['col1'] else pd.Series([0] * len(cleaned_df), index=cleaned_df.index)
-
                         if col_def['col2'] == "Custom Value" and col_def['val2']:
                             val2_num = pd.to_numeric(col_def['val2'], errors='coerce')
                             if pd.isna(val2_num):
@@ -524,12 +640,10 @@ if uploaded_file is not None:
                             series2 = pd.Series([val2_num] * len(cleaned_df), index=cleaned_df.index)
                         else:
                             series2 = cleaned_df[col_def['col2']] if col_def['col2'] else pd.Series([1] * len(cleaned_df), index=cleaned_df.index)
-
                         series1 = pd.to_numeric(series1, errors='coerce')
                         series2 = pd.to_numeric(series2, errors='coerce')
                         if series1.isna().all() or series2.isna().all():
                             raise ValueError("Columns or values must be numeric")
-
                         if col_def['operation'] == "+":
                             cleaned_df[col_def['name']] = series1 + series2
                         elif col_def['operation'] == "-":
@@ -548,6 +662,7 @@ if uploaded_file is not None:
                     st.error(f"Error applying column {col_def['name']}: {str(e)}")
             st.session_state.cleaned_df = cleaned_df
             st.session_state.history.append(cleaned_df.copy())
+            st.session_state.new_columns.append(column_definitions)
             st.success("New columns added successfully!")
             st.write("Updated Dataset Preview:")
             st.dataframe(cleaned_df.head())
@@ -557,7 +672,7 @@ if uploaded_file is not None:
     kpi_option = st.checkbox("Generate KPIs from the dataset")
     if kpi_option:
         st.subheader("Define KPIs")
-        num_kpis = st.number_input("Number of KPIs to define", min_value=1, max_value=10, value=1, step=1)
+        num_kpis = st.number_input("Number of KPIs to define", min_value=1, max_value=10, value=len(st.session_state.kpi_definitions) or 1, step=1)
         kpi_definitions = []
         for i in range(num_kpis):
             st.write(f"### KPI {i+1}")
@@ -611,7 +726,8 @@ if uploaded_file is not None:
                 'viz_type': viz_type,
                 'time_col': time_col if time_col != "None" else None
             })
-        
+        st.session_state.kpi_definitions = kpi_definitions
+
         if st.button("Calculate KPIs"):
             kpi_results = []
             all_kpi_dfs = []
@@ -700,55 +816,75 @@ if uploaded_file is not None:
                     combined_kpi_df = combined_kpi_df.loc[:, ~combined_kpi_df.columns.duplicated()]
                     st.dataframe(combined_kpi_df)
                     csv = combined_kpi_df.to_csv(index=False)
-                    st.download_button("Download KPIs as CSV", csv, "kpi_results.csv", "text/csv", key="download_kpis_csv")
+                    st.download_button("Download KPIs as CSV", csv, "kpi_results.csv", "text/csv")
                     pdf_buffer = create_pdf_report(kpi_results)
-                    st.download_button("Download KPIs as PDF", pdf_buffer, "kpi_report.pdf", "application/pdf", key="download_kpis_pdf")
+                    st.download_button("Download KPIs as PDF", pdf_buffer, "kpi_report.pdf", "application/pdf")
                 except:
                     st.warning("Could not combine KPI results into table")
 
     # Step 10: Visualization Section
     st.header("Visualization")
     st.write("Create custom visualizations based on your data.")
+    
+    def update_viz_cols():
+        st.session_state.selected_viz_cols = st.session_state.viz_cols
+    
+    def update_viz_type():
+        st.session_state.selected_viz_type = st.session_state.viz_type
+    
     available_cols = st.session_state.cleaned_df.columns.tolist()
-    selected_cols = st.multiselect("Select columns for visualization", available_cols, key="viz_cols")
-    if selected_cols:
+    viz_cols = st.multiselect(
+        "Select columns for visualization",
+        available_cols,
+        default=[col for col in st.session_state.selected_viz_cols if col in available_cols],
+        key="viz_cols",
+        on_change=update_viz_cols
+    )
+    
+    if viz_cols:
         plot_types = ["Choose plot type"]
         num_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns
         cat_cols = st.session_state.cleaned_df.select_dtypes(include=['object']).columns
-        if len(selected_cols) >= 1:
+        if len(viz_cols) >= 1:
             plot_types.extend(["Line Plot", "Histogram", "Boxplot", "Pie Chart"])
-        if len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
+        if len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
             plot_types.extend(["Scatter Plot", "Bar Graph", "Area Chart"])
-        if len(selected_cols) >= 2 and all(col in num_cols for col in selected_cols[:2]):
+        if len(viz_cols) >= 2 and all(col in num_cols for col in viz_cols[:2]):
             plot_types.append("Pairplot")
-        if len(num_cols) > 1 and any(col in selected_cols for col in num_cols):
+        if len(num_cols) > 1 and any(col in viz_cols for col in num_cols):
             plot_types.append("Heatmap")
-        if len(selected_cols) >= 2 and any(col in cat_cols for col in selected_cols):
+        if len(viz_cols) >= 2 and any(col in cat_cols for col in viz_cols):
             plot_types.append("Grouped Bar Plot")
-        plot_type = st.selectbox("Select plot type", plot_types, key="viz_type")
-        if plot_type != "Choose plot type":
-            if plot_type == "Line Plot" and len(selected_cols) >= 1:
-                x_col = st.selectbox("Select X-axis", selected_cols, key="line_x")
-                if len(selected_cols) > 1:
-                    y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col != x_col], key="line_y")
-                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
+        viz_type = st.selectbox(
+            "Select plot type",
+            plot_types,
+            index=plot_types.index(st.session_state.selected_viz_type) if st.session_state.selected_viz_type in plot_types else 0,
+            key="viz_type",
+            on_change=update_viz_type
+        )
+        if viz_type != "Choose plot type":
+            if viz_type == "Line Plot" and len(viz_cols) >= 1:
+                x_col = st.selectbox("Select X-axis", viz_cols, key="line_x")
+                if len(viz_cols) > 1:
+                    y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col != x_col], key="line_y")
+                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{viz_type}: {y_col} vs {x_col}")
                 else:
-                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=None, title=f"{plot_type}: {x_col}")
+                    fig = px.line(st.session_state.cleaned_df, x=x_col, y=None, title=f"{viz_type}: {x_col}")
                 st.plotly_chart(fig)
-            elif plot_type == "Scatter Plot" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
-                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in num_cols], key="scatter_x")
-                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="scatter_y")
+            elif viz_type == "Scatter Plot" and len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in num_cols], key="scatter_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="scatter_y")
                 if x_col and y_col:
-                    color_col = st.selectbox("Select color/group (optional)", ["None"] + [col for col in selected_cols if col not in [x_col, y_col]], key="scatter_color")
+                    color_col = st.selectbox("Select color/group (optional)", ["None"] + [col for col in viz_cols if col not in [x_col, y_col]], key="scatter_color")
                     if color_col == "None":
                         color_col = None
-                    fig = px.scatter(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                    fig = px.scatter(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} vs {x_col}")
                     st.plotly_chart(fig)
-            elif plot_type == "Pairplot" and len(selected_cols) >= 2 and all(col in num_cols for col in selected_cols[:2]):
-                fig = sns.pairplot(st.session_state.cleaned_df[selected_cols])
+            elif viz_type == "Pairplot" and len(viz_cols) >= 2 and all(col in num_cols for col in viz_cols[:2]):
+                fig = sns.pairplot(st.session_state.cleaned_df[viz_cols])
                 st.pyplot(fig)
-            elif plot_type == "Heatmap" and len(num_cols) > 1 and any(col in selected_cols for col in num_cols):
-                corr_cols = [col for col in selected_cols if col in num_cols]
+            elif viz_type == "Heatmap" and len(num_cols) > 1 and any(col in viz_cols for col in num_cols):
+                corr_cols = [col for col in viz_cols if col in num_cols]
                 if len(corr_cols) > 1:
                     corr = st.session_state.cleaned_df[corr_cols].corr()
                     fig, ax = plt.subplots()
@@ -756,92 +892,81 @@ if uploaded_file is not None:
                     st.pyplot(fig)
                 else:
                     st.write("Need at least 2 numeric columns for heatmap.")
-            elif plot_type == "Histogram" and len(selected_cols) >= 1:
-                for col in selected_cols:
+            elif viz_type == "Histogram" and len(viz_cols) >= 1:
+                for col in viz_cols:
                     fig, ax = plt.subplots()
                     st.session_state.cleaned_df[col].hist(ax=ax)
-                    ax.set_title(f"{plot_type} of {col}")
+                    ax.set_title(f"{viz_type} of {col}")
                     st.pyplot(fig)
-            elif plot_type == "Boxplot" and len(selected_cols) >= 1:
-                for col in selected_cols:
+            elif viz_type == "Boxplot" and len(viz_cols) >= 1:
+                for col in viz_cols:
                     fig, ax = plt.subplots()
                     sns.boxplot(x=st.session_state.cleaned_df[col], ax=ax)
-                    ax.set_title(f"{plot_type} of {col}")
+                    ax.set_title(f"{viz_type} of {col}")
                     st.pyplot(fig)
-            elif plot_type == "Pie Chart" and len(selected_cols) >= 1:
-                if any(col in cat_cols for col in selected_cols):
-                    names_col = st.selectbox("Select category column", [col for col in selected_cols if col in cat_cols], key="pie_names")
-                    if len(selected_cols) > 1 and any(col in num_cols for col in selected_cols):
-                        values_col = st.selectbox("Select values column", [col for col in selected_cols if col in num_cols and col != names_col], key="pie_values")
-                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=values_col, title=f"{plot_type}: {names_col} vs {values_col}")
+            elif viz_type == "Pie Chart" and len(viz_cols) >= 1:
+                if any(col in cat_cols for col in viz_cols):
+                    names_col = st.selectbox("Select category column", [col for col in viz_cols if col in cat_cols], key="pie_names")
+                    if len(viz_cols) > 1 and any(col in num_cols for col in viz_cols):
+                        values_col = st.selectbox("Select values column", [col for col in viz_cols if col in num_cols and col != names_col], key="pie_values")
+                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=values_col, title=f"{viz_type}: {names_col} vs {values_col}")
                     else:
-                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=None, title=f"{plot_type}: {names_col}")
+                        fig = px.pie(st.session_state.cleaned_df, names=names_col, values=None, title=f"{viz_type}: {names_col}")
                     st.plotly_chart(fig)
                 else:
                     st.write("Need at least one categorical column for pie chart.")
-            elif plot_type == "Bar Graph" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
-                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in cat_cols or col in num_cols], key="bar_x")
-                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="bar_y")
+            elif viz_type == "Bar Graph" and len(viz_cols) >= 2 and any(col in num_cols for col in viz_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in cat_cols or col in num_cols], key="bar_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="bar_y")
                 if x_col and y_col:
-                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
+                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{viz_type}: {y_col} vs {x_col}")
                     st.plotly_chart(fig)
-            elif plot_type == "Grouped Bar Plot" and len(selected_cols) >= 2 and any(col in cat_cols for col in selected_cols):
-                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in cat_cols], key="group_bar_x")
-                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="group_bar_y")
-                color_col = st.selectbox("Select group column", [col for col in selected_cols if col in cat_cols and col != x_col], key="group_bar_color")
+            elif viz_type == "Grouped Bar Plot" and len(viz_cols) >= 2 and any(col in cat_cols for col in viz_cols):
+                x_col = st.selectbox("Select X-axis", [col for col in viz_cols if col in cat_cols], key="group_bar_x")
+                y_col = st.selectbox("Select Y-axis", [col for col in viz_cols if col in num_cols and col != x_col], key="group_bar_y")
+                color_col = st.selectbox("Select group column", [col for col in viz_cols if col in cat_cols and col != x_col], key="group_bar_color")
                 if x_col and y_col and color_col:
-                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{plot_type}: {y_col} by {x_col} and {color_col}")
+                    fig = px.bar(st.session_state.cleaned_df, x=x_col, y=y_col, color=color_col, title=f"{viz_type}: {y_col} by {x_col} and {color_col}")
                     st.plotly_chart(fig)
-            elif plot_type == "Area Chart" and len(selected_cols) >= 2 and any(col in num_cols for col in selected_cols):
-                x_col = st.selectbox("Select X-axis", [col for col in selected_cols if col in num_cols], key="area_x")
-                y_col = st.selectbox("Select Y-axis", [col for col in selected_cols if col in num_cols and col != x_col], key="area_y")
-                if x_col and y_col:
-                    fig = px.area(st.session_state.cleaned_df, x=x_col, y=y_col, title=f"{plot_type}: {y_col} vs {x_col}")
-                    st.plotly_chart(fig)
-            else:
-                st.write(f"Invalid selection for {plot_type}. Check column types and selections.")
 
     # Step 11: Machine Learning Predictions
     st.header("Machine Learning Predictions")
     if len(st.session_state.cleaned_df) < 10:
         st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
     else:
-        # Initialize session state for storing model and metadata
-        if 'model_pipeline' not in st.session_state:
-            st.session_state.model_pipeline = None
-        if 'model_name' not in st.session_state:
-            st.session_state.model_name = None
-        if 'task' not in st.session_state:
-            st.session_state.task = None
-        if 'feature_cols' not in st.session_state:
-            st.session_state.feature_cols = None
-        if 'num_cols' not in st.session_state:
-            st.session_state.num_cols = None
-        if 'cat_cols' not in st.session_state:
-            st.session_state.cat_cols = None
-        if 'target_col' not in st.session_state:
-            st.session_state.target_col = None
-
-        target_col = st.selectbox("Select target column for prediction", st.session_state.cleaned_df.columns)
+        def update_target_col():
+            st.session_state.selected_target_col = st.session_state.target_col
+        
+        target_col = st.selectbox(
+            "Select target column for prediction",
+            st.session_state.cleaned_df.columns,
+            index=st.session_state.cleaned_df.columns.get_loc(st.session_state.selected_target_col) if st.session_state.selected_target_col in st.session_state.cleaned_df.columns else 0,
+            key="target_col",
+            on_change=update_target_col
+        )
+        
         if target_col:
             unique_vals = st.session_state.cleaned_df[target_col].nunique()
-            if pd.api.types.is_object_dtype(st.session_state.cleaned_df[target_col]) or unique_vals <= 20:
-                task = 'classification'
-            else:
-                task = 'regression'
+            task = 'classification' if pd.api.types.is_object_dtype(st.session_state.cleaned_df[target_col]) or unique_vals <= 20 else 'regression'
             st.write(f"Detected task: {task.capitalize()} (based on target type and uniqueness)")
-            feature_cols = st.multiselect("Select feature columns", [col for col in st.session_state.cleaned_df.columns if col != target_col])
-            model_mode = st.radio("Model Selection Mode", ["Manual (select one)", "Auto-select best", "Compare top two"])
+            
+            def update_feature_cols():
+                st.session_state.selected_feature_cols = st.session_state.feature_cols
+            
+            feature_cols = st.multiselect(
+                "Select feature columns",
+                [col for col in st.session_state.cleaned_df.columns if col != target_col],
+                default=[col for col in st.session_state.selected_feature_cols if col in st.session_state.cleaned_df.columns and col != target_col],
+                key="feature_cols",
+                on_change=update_feature_cols
+            )
+            
+            model_mode = st.radio("Model Selection Mode", ["Manual (select one)", "Auto-select best", "Compare top two"], key="model_mode")
             selected_model = None
             if model_mode == "Manual (select one)":
-                if task == 'classification':
-                    model_options = ['RandomForest', 'XGBoost', 'LogisticRegression', 'SVM']
-                else:
-                    model_options = ['RandomForest', 'XGBoost', 'LinearRegression', 'SVM']
-                selected_model = st.selectbox("Select ML model", model_options)
-            use_smote = False
-            if task == 'classification':
-                use_smote = st.checkbox("Handle imbalanced classes with SMOTE")
+                model_options = ['RandomForest', 'XGBoost', 'LogisticRegression', 'SVM'] if task == 'classification' else ['RandomForest', 'XGBoost', 'LinearRegression', 'SVM']
+                selected_model = st.selectbox("Select ML model", model_options, key="selected_model")
+            use_smote = st.checkbox("Handle imbalanced classes with SMOTE") if task == 'classification' else False
             if feature_cols and st.button("Run ML Model"):
                 with st.spinner("Training model(s)..."):
                     try:
@@ -850,78 +975,48 @@ if uploaded_file is not None:
                         if task == 'classification' and pd.api.types.is_object_dtype(y):
                             y = y.astype('category').cat.codes
                         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                        
-                        # Check for missing values
                         if X_train.isna().any().any() or X_test.isna().any().any():
-                            st.error("Input data contains missing values. Please clean the data (e.g., fill or drop missing values) before running the model.")
+                            st.error("Input data contains missing values. Please clean the data first.")
                             st.stop()
-                        
-                        # Identify numeric and categorical columns
                         num_cols = X.select_dtypes(include=['float64', 'int64']).columns.tolist()
                         cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
-                        
-                        # Debug: Print selected columns
-                        st.write(f"Numeric columns: {num_cols}")
-                        st.write(f"Categorical columns: {cat_cols}")
-                        
-                        # Ensure at least one transformer is defined
+                        st.session_state.num_cols = num_cols
+                        st.session_state.cat_cols = cat_cols
+                        st.session_state.selected_target_col = target_col
                         transformers = []
                         if num_cols:
                             transformers.append(('num', StandardScaler(), num_cols))
                         if cat_cols:
                             transformers.append(('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols))
-                        
                         if not transformers:
                             st.error("No valid numeric or categorical columns selected for preprocessing.")
                             st.stop()
-                        
                         preprocessor = ColumnTransformer(transformers=transformers)
-                        
-                        if task == 'classification':
-                            models = {
-                                'RandomForest': RandomForestClassifier(random_state=42),
-                                'XGBoost': XGBClassifier(random_state=42, enable_categorical=True),
-                                'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000),
-                                'SVM': SVC(random_state=42, probability=True)
-                            }
-                            metric_func = accuracy_score
-                            metric_name = 'Accuracy'
-                            is_higher_better = True
-                        else:
-                            models = {
-                                'RandomForest': RandomForestRegressor(random_state=42),
-                                'XGBoost': XGBRegressor(random_state=42, enable_categorical=True),
-                                'LinearRegression': LinearRegression(),
-                                'SVM': SVR()
-                            }
-                            metric_func = r2_score
-                            metric_name = 'R² Score'
-                            is_higher_better = True
-                        
+                        models = {
+                            'RandomForest': RandomForestClassifier(random_state=42) if task == 'classification' else RandomForestRegressor(random_state=42),
+                            'XGBoost': XGBClassifier(random_state=42, enable_categorical=True) if task == 'classification' else XGBRegressor(random_state=42, enable_categorical=True),
+                            'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000) if task == 'classification' else LinearRegression(),
+                            'SVM': SVC(random_state=42, probability=True) if task == 'classification' else SVR()
+                        }
                         def build_pipeline(model):
                             if use_smote and task == 'classification':
                                 return ImbPipeline(steps=[('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('model', model)])
                             return Pipeline(steps=[('preprocessor', preprocessor), ('model', model)])
-                        
                         results = {}
                         if model_mode != "Manual (select one)":
                             for name, model in models.items():
                                 pipeline = build_pipeline(model)
                                 pipeline.fit(X_train, y_train)
                                 y_pred = pipeline.predict(X_test)
-                                metric_value = metric_func(y_test, y_pred)
+                                metric_value = accuracy_score(y_test, y_pred) if task == 'classification' else r2_score(y_test, y_pred)
                                 results[name] = {'pipeline': pipeline, 'y_pred': y_pred, 'metric_value': metric_value}
-                            sorted_results = sorted(results.items(), key=lambda x: x[1]['metric_value'], reverse=is_higher_better)
-                        
+                            sorted_results = sorted(results.items(), key=lambda x: x[1]['metric_value'], reverse=True)
                         if model_mode == "Manual (select one)":
                             model = models[selected_model]
                             pipeline = build_pipeline(model)
                             pipeline.fit(X_train, y_train)
                             y_pred = pipeline.predict(X_test)
-                            if task == 'classification':
-                                metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
-                            else:
-                                metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
+                            metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
                             st.subheader(f"Model: {selected_model}")
                             st.text(metrics_text)
                             st.subheader("Actual vs. Predicted")
@@ -946,27 +1041,16 @@ if uploaded_file is not None:
                                 feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
                                 imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
                                 st.dataframe(imp_df)
-                            # Store model and metadata in session state
                             st.session_state.model_pipeline = pipeline
                             st.session_state.model_name = selected_model
                             st.session_state.task = task
-                            st.session_state.feature_cols = feature_cols
-                            st.session_state.num_cols = num_cols
-                            st.session_state.cat_cols = cat_cols
-                            st.session_state.target_col = target_col
                         elif model_mode == "Auto-select best":
                             best_name, best_result = sorted_results[0]
                             pipeline = best_result['pipeline']
                             y_pred = best_result['y_pred']
-                            st.subheader(f"Best Model: {best_name} ({metric_name}: {best_result['metric_value']:.2f})")
-                            if task == 'classification':
-                                metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
-                                st.text(metrics_text)
-                                st.subheader("Classification Report")
-                                st.text(classification_report(y_test, y_pred))
-                            else:
-                                metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
-                                st.text(metrics_text)
+                            st.subheader(f"Best Model: {best_name} (Accuracy: {best_result['metric_value']:.2f})")
+                            metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
+                            st.text(metrics_text)
                             st.subheader("Actual vs. Predicted")
                             pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
                             pred_df.rename(columns={'index': 'Index'}, inplace=True)
@@ -989,25 +1073,17 @@ if uploaded_file is not None:
                                 feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
                                 imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
                                 st.dataframe(imp_df)
-                            # Store model and metadata in session state
                             st.session_state.model_pipeline = pipeline
                             st.session_state.model_name = best_name
                             st.session_state.task = task
-                            st.session_state.feature_cols = feature_cols
-                            st.session_state.num_cols = num_cols
-                            st.session_state.cat_cols = cat_cols
-                            st.session_state.target_col = target_col
                         elif model_mode == "Compare top two":
                             col1, col2 = st.columns(2)
                             for i, (name, result) in enumerate(sorted_results[:2]):
                                 pipeline = result['pipeline']
                                 y_pred = result['y_pred']
                                 with [col1, col2][i]:
-                                    st.subheader(f"Model: {name} ({metric_name}: {result['metric_value']:.2f})")
-                                    if task == 'classification':
-                                        metrics_text = f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)
-                                    else:
-                                        metrics_text = f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}"
+                                    st.subheader(f"Model: {name} (Accuracy: {result['metric_value']:.2f})")
+                                    metrics_text = (f"Accuracy: {accuracy_score(y_test, y_pred):.2f}\n" + classification_report(y_test, y_pred)) if task == 'classification' else (f"Mean Squared Error: {mean_squared_error(y_test, y_pred):.2f}\n" + f"R² Score: {r2_score(y_test, y_pred):.2f}")
                                     st.text(metrics_text)
                                     st.subheader("Actual vs. Predicted")
                                     pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index()
@@ -1031,26 +1107,20 @@ if uploaded_file is not None:
                                         feature_names = num_cols + (list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(cat_cols)) if cat_cols else [])
                                         imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances}).sort_values('Importance', ascending=False)
                                         st.dataframe(imp_df)
-                            # Store the best model (first of top two) in session state
                             st.session_state.model_pipeline = sorted_results[0][1]['pipeline']
                             st.session_state.model_name = sorted_results[0][0]
                             st.session_state.task = task
-                            st.session_state.feature_cols = feature_cols
-                            st.session_state.num_cols = num_cols
-                            st.session_state.cat_cols = cat_cols
-                            st.session_state.target_col = target_col
-                    except (ValueError, TypeError, KeyError) as e:
-                        st.error(f"Error running model: {str(e)}. Check data types, missing values, or column selections.")
-                        st.stop()
+                    except Exception as e:
+                        st.error(f"Error running model: {str(e)}")
 
         # Prediction Input Section
-        if st.session_state.model_pipeline is not None and st.session_state.feature_cols is not None:
+        if st.session_state.model_pipeline is not None and st.session_state.selected_feature_cols:
             st.subheader("Make New Predictions with Trained Model")
-            prediction_mode = st.radio("Prediction Method", ["Manual Input", "Upload CSV"])
+            prediction_mode = st.radio("Prediction Method", ["Manual Input", "Upload CSV"], key="prediction_mode")
             if prediction_mode == "Manual Input":
                 st.write(f"Enter values for the selected features to get a prediction from the trained {st.session_state.model_name} model.")
                 input_data = {}
-                for col in st.session_state.feature_cols:
+                for col in st.session_state.selected_feature_cols:
                     if col in st.session_state.num_cols:
                         input_data[col] = st.number_input(f"Enter value for {col}", value=0.0, key=f"input_{col}")
                     else:
@@ -1058,48 +1128,39 @@ if uploaded_file is not None:
                         input_data[col] = st.selectbox(f"Select value for {col}", unique_vals, key=f"input_{col}")
                 if st.button("Predict"):
                     try:
-                        input_df = pd.DataFrame([input_data], columns=st.session_state.feature_cols)
+                        input_df = pd.DataFrame([input_data], columns=st.session_state.selected_feature_cols)
                         prediction = st.session_state.model_pipeline.predict(input_df)[0]
-                        if st.session_state.task == 'classification':
-                            if pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.target_col]):
-                                unique_labels = st.session_state.cleaned_df[st.session_state.target_col].astype('category').cat.categories
-                                pred_label = unique_labels[int(prediction)]
-                                st.success(f"Prediction from {st.session_state.model_name}: **{pred_label}**")
-                            else:
-                                st.success(f"Prediction from {st.session_state.model_name}: **{prediction}**")
+                        if st.session_state.task == 'classification' and pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.selected_target_col]):
+                            unique_labels = st.session_state.cleaned_df[st.session_state.selected_target_col].astype('category').cat.categories
+                            pred_label = unique_labels[int(prediction)]
+                            st.success(f"Prediction from {st.session_state.model_name}: **{pred_label}**")
                         else:
                             st.success(f"Prediction from {st.session_state.model_name}: **{prediction:.2f}**")
                     except Exception as e:
-                        st.error(f"Error making prediction: {str(e)}. Ensure input values match the expected format (numeric for {st.session_state.num_cols}, categorical for {st.session_state.cat_cols}).")
+                        st.error(f"Error making prediction: {str(e)}")
             elif prediction_mode == "Upload CSV":
                 st.write(f"Upload a new CSV file with the same feature columns to get batch predictions from the trained {st.session_state.model_name} model.")
                 new_uploaded_file = st.file_uploader("Upload new CSV for predictions", type=["csv"], key="new_pred_file")
                 if new_uploaded_file is not None:
                     try:
                         new_df = pd.read_csv(new_uploaded_file)
-                        # Check if all required feature columns are present
-                        missing_cols = set(st.session_state.feature_cols) - set(new_df.columns)
+                        missing_cols = set(st.session_state.selected_feature_cols) - set(new_df.columns)
                         if missing_cols:
                             st.error(f"Missing required feature columns in uploaded CSV: {missing_cols}")
                             st.stop()
-                        # Make predictions
-                        predictions = st.session_state.model_pipeline.predict(new_df[st.session_state.feature_cols])
-                        # If classification and target was categorical, map back to labels
-                        if st.session_state.task == 'classification' and pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.target_col]):
-                            unique_labels = st.session_state.cleaned_df[st.session_state.target_col].astype('category').cat.categories
+                        predictions = st.session_state.model_pipeline.predict(new_df[st.session_state.selected_feature_cols])
+                        if st.session_state.task == 'classification' and pd.api.types.is_object_dtype(st.session_state.cleaned_df[st.session_state.selected_target_col]):
+                            unique_labels = st.session_state.cleaned_df[st.session_state.selected_target_col].astype('category').cat.categories
                             predictions = [unique_labels[int(pred)] for pred in predictions]
-                        # Add predictions to the DataFrame
                         new_df['Predicted'] = predictions
                         st.subheader("Predictions on Uploaded Data")
                         st.dataframe(new_df)
-                        # Optional: Download button for the predicted CSV
                         csv = new_df.to_csv(index=False).encode('utf-8')
                         st.download_button("Download Predictions as CSV", csv, "predictions.csv", "text/csv")
                     except Exception as e:
-                        st.error(f"Error processing uploaded CSV: {str(e)}. Ensure the CSV has the correct feature columns and data types.")
-        elif st.session_state.model_pipeline is None:
-            st.info("Please run the model first to enable predictions.")
-
+                        st.error(f"Error processing uploaded CSV: {str(e)}")
+else:
+    st.info("Please upload a CSV dataset to begin analysis.")
 
 # Footer
 st.markdown("""
@@ -1110,18 +1171,11 @@ st.markdown("""
     <div style='font-size: 0.9rem; color: #333; margin-top: 0.5rem;'>
         <div style='margin-bottom: 0.3rem;'>
             <i class="fab fa-linkedin" style='margin-right: 8px;'></i>
-            <a href="[https://www.linkedin.com/in/mohammed-zakyi-399b2114a/]" target="_blank">LinkedIn Profile</a>
+            <a href="https://www.linkedin.com/in/mohammed-zakyi-399b2114a/" target="_blank">LinkedIn Profile</a>
         </div>
         <div style='margin-bottom: 0.3rem;'>
             <i class="fas fa-envelope" style='margin-right: 8px;'></i>
-            <a href="mailto:[Your Email Address]">mzakyi06240@ucumberlands.edu</a>
+            <a href="mailto:mzakyi06240@ucumberlands.edu">mzakyi06240@ucumberlands.edu</a>
         </div>
 </div>
 """, unsafe_allow_html=True)
-
-
-
-
-
-                                     
-                        

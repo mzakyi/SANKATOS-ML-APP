@@ -78,7 +78,6 @@ To run the Sankatos App locally, follow these steps:
 2. **Clean Data**: Select cleaning options (e.g., remove duplicates, handle missing values) and apply them. Use the "Undo Last Action" button to revert changes.
 3. **Profile Dataset**: Generate profile reports for the original or cleaned dataset to analyze data distributions and statistics.
 4. **Explore Insights**: Choose visualization options (e.g., histograms, correlation heatmaps) to explore data patterns.
-5. **Generate KPIs**: Define custom KPIs with aggregations or formulas, optionally grouped by columns or filtered by time periods. Visualize KPIs as bar, pie, or line charts.
 6. **Build ML Models**: 
    - Select a target column and features to train classification or regression models
    - Choose manual model selection, auto-select best, or compare top models

@@ -119,8 +119,7 @@ The app optimizes key parameters for each model type:
 - **Large Datasets**: For datasets with >10,000 rows or >50 columns, profiling may be slow. Use minimal mode (enabled by default) for efficiency.
 - **Hyperparameter Tuning Performance**: With tuning enabled, model training may take several minutes depending on dataset size and selected models. Progress is displayed during training.
 - **Private Repository**: This repository is private, accessible only to the owner and invited collaborators.
-- **Future Deployment**: The app is ready for deployment to platforms like Streamlit Cloud or Render, which can connect to this private repository.
-
+- **Deployment**: The app is deployed.
 ## Contact
 
 - **Owner/Creator**: Mohammed Zakyi

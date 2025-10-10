@@ -1345,7 +1345,7 @@ def run_main_app_content():
         st.markdown("""
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
         <div style='text-align: center; margin-top: 2rem; padding: 1rem; background-color: #f0f0f0; border-radius: 10px;'>
-            <div style='font-size: 1.2rem; color: #000000; font-weight: bold;'>✨Sankatos APP (Final Version)✨</div>
+            <div style='font-size: 1.2rem; color: #000000; font-weight: bold;'>✨Sankatos APP✨</div>
             <div style='font-size: 0.9rem; color: #000000; margin-top: 0.2rem;'>Owner/Creator: Mohammed Zakyi</div>
             <div style='font-size: 0.9rem; color: #333; margin-top: 0.5rem;'>
                 <div style='margin-bottom: 0.3rem;'>

@@ -390,6 +390,10 @@ def load_data_from_db(db_type, host, port, user, password, database, sql_query):
     # --- END MOCK CONNECTION LOGIC ---
 
 # === NEW: Sidebar Navigation Function ===
+
+
+
+
 def navigation_sidebar():
     """Handles the sidebar navigation for logged-in users."""
     with st.sidebar:
@@ -1357,7 +1361,6 @@ def run_main_app_content():
         """, unsafe_allow_html=True)
 
 # ----------------- MAIN CONTROL FLOW -----------------
-
 if authenticate():
     navigation_sidebar() # Always show the sidebar once authenticated
     
@@ -1369,3 +1372,6 @@ if authenticate():
         # 1. The user is a regular user (view defaults to 'main_app')
         # 2. The user is an admin who has switched the view to 'main_app'
         run_main_app_content()
+
+
+

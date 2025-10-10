@@ -794,24 +794,39 @@ def run_main_app_content():
                     st.write(f"  - Skipped duplicate removal.")
 
 
-                # 3. Convert Data Types & Coerce Errors
+               # 3. Convert Data Types & Coerce Errors
                 st.markdown("##### 3. Applying Data Type Conversions & Error Coercion...")
                 for col, new_type in st.session_state.selected_change_types.items():
                     if col in new_df.columns:
-                        errors_param = 'coerce' if st.session_state.coerce_errors and new_type in ["float64", "int64", "datetime64[ns]"] else 'ignore'
                         
                         if new_type == "datetime64[ns]":
+                            errors_param = 'coerce' if st.session_state.coerce_errors else 'ignore'
                             new_df[col] = pd.to_datetime(new_df[col], errors=errors_param)
+                            st.write(f"  - Converted `{col}` to {new_type} (Errors handled: {errors_param}).")
+                        
                         elif new_type == "bool":
                             new_df[col] = new_df[col].astype(bool)
+                            st.write(f"  - Converted `{col}` to {new_type}.")
+                        
+                        elif new_type in ["float64", "int64"]:
+                            # Use pd.to_numeric for numeric conversions (supports 'coerce')
+                            if st.session_state.coerce_errors:
+                                new_df[col] = pd.to_numeric(new_df[col], errors='coerce')
+                                if new_type == "int64":
+                                    # Convert to int, filling NaN values with 0 first
+                                    new_df[col] = new_df[col].fillna(0).astype('int64')
+                                st.write(f"  - Converted `{col}` to {new_type} (Errors handled: coerce).")
+                            else:
+                                new_df[col] = pd.to_numeric(new_df[col], errors='ignore')
+                                st.write(f"  - Converted `{col}` to {new_type} (Errors handled: ignore).")
+                        
                         else:
-                            new_df[col] = new_df[col].astype(new_type, errors=errors_param)
+                            # For other types, use astype with 'ignore' only
+                            new_df[col] = new_df[col].astype(new_type, errors='ignore')
+                            st.write(f"  - Converted `{col}` to {new_type}.")
 
-                        st.write(f"  - Converted `{col}` to {new_type} (Errors handled: {errors_param}).")
-                
                 if st.session_state.coerce_errors:
                     st.info("  - **Note:** Any data errors converted to `NaN` will be addressed in the next step (Handling Missing Values).")
-
 
                 # 4. Handle Missing Values
                 st.markdown("##### 4. Applying Missing Value Handling...")
@@ -1074,7 +1089,14 @@ def run_main_app_content():
                                 y = y.astype('category').cat.codes
                             
                             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                            
+
+                            # Clean categorical columns - convert mixed types to strings and handle NaN
+                            cat_cols_to_check = X.select_dtypes(include=['object', 'category']).columns.tolist()
+                            for col in cat_cols_to_check:
+                                # Convert all values to strings and replace NaN with 'missing'
+                                X_train[col] = X_train[col].fillna('missing').astype(str)
+                                X_test[col] = X_test[col].fillna('missing').astype(str)
+
                             if X_train.isna().any().any() or X_test.isna().any().any():
                                 st.error("Input data contains missing values. Please go back to Step 3 and clean the data first.")
                                 st.stop()

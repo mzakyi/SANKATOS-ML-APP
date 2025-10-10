@@ -1131,7 +1131,7 @@ def run_main_app_content():
                                     grid_search = GridSearchCV(
                                         pipeline,
                                         param_grid,
-                                        cv=3,
+                                        cv=5,
                                         scoring=scoring_metric,
                                         n_jobs=-1,
                                         verbose=0
@@ -1372,6 +1372,4 @@ if authenticate():
         # 1. The user is a regular user (view defaults to 'main_app')
         # 2. The user is an admin who has switched the view to 'main_app'
         run_main_app_content()
-
-
 

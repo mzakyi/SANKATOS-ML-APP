@@ -1069,28 +1069,28 @@ def run_main_app_content():
                     st.plotly_chart(fig, use_container_width=True)
 
       # --- Step 7: Machine Learning Predictions ---
-st.header("7. Machine Learning Predictions")
-
-# Ensure required session_state keys exist
-for key in ['cleaned_df', 'selected_target_col', 'selected_feature_cols', 'model_pipeline', 'model_name', 'task', 'best_params']:
-    if key not in st.session_state:
-        st.session_state[key] = None
-
-if st.session_state.cleaned_df is None or len(st.session_state.cleaned_df) < 10:
-    st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
-else:
-    # --- Target column selection ---
-    def update_target_col():
-        st.session_state.selected_target_col = st.session_state.target_col
-
-    target_col = st.selectbox(
-        "Select target column for prediction",
-        st.session_state.cleaned_df.columns,
-        index=st.session_state.cleaned_df.columns.get_loc(st.session_state.selected_target_col) 
-              if st.session_state.selected_target_col in st.session_state.cleaned_df.columns and st.session_state.selected_target_col else 0,
-        key="target_col",
-        on_change=update_target_col
-    )
+    st.header("7. Machine Learning Predictions")
+    
+    # Ensure required session_state keys exist
+    for key in ['cleaned_df', 'selected_target_col', 'selected_feature_cols', 'model_pipeline', 'model_name', 'task', 'best_params']:
+        if key not in st.session_state:
+            st.session_state[key] = None
+    
+    if st.session_state.cleaned_df is None or len(st.session_state.cleaned_df) < 10:
+        st.warning("Dataset is too small for meaningful ML training. Need at least 10 rows.")
+    else:
+        # --- Target column selection ---
+        def update_target_col():
+            st.session_state.selected_target_col = st.session_state.target_col
+    
+        target_col = st.selectbox(
+            "Select target column for prediction",
+            st.session_state.cleaned_df.columns,
+            index=st.session_state.cleaned_df.columns.get_loc(st.session_state.selected_target_col) 
+                  if st.session_state.selected_target_col in st.session_state.cleaned_df.columns and st.session_state.selected_target_col else 0,
+            key="target_col",
+            on_change=update_target_col
+        )
 
     if target_col:
         # Determine task type

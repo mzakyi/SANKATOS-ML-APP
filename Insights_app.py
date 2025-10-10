@@ -957,19 +957,18 @@ def run_main_app_content():
                 file_name='cleaned_data.csv',
                 mime='text/csv',
             )
-
         # --- Step 5: Interactive Data Visualization ---
         st.header("5. Interactive Data Visualization")
         st.write("Explore relationships and distributions in your dataset with Plotly.")
-        
+
         col_viz_1, col_viz_2 = st.columns(2)
         with col_viz_1:
             st.session_state.selected_viz_type = st.selectbox(
                 "Select Plot Type",
-                ["Choose plot type", "Histogram", "Scatter Plot", "Bar Chart", "Box Plot"],
+                ["Choose plot type", "Histogram", "Scatter Plot", "Box Plot", "Bar Chart", "Pairplot"],
                 key="viz_type"
             )
-        
+
         if st.session_state.selected_viz_type != "Choose plot type":
             
             all_cols = st.session_state.cleaned_df.columns.tolist()
@@ -1022,17 +1021,54 @@ def run_main_app_content():
                         y=y_col, 
                         title=f"{agg_func.capitalize()} of {y_col} by {x_col}"
                     )
+            
+            elif st.session_state.selected_viz_type == "Pairplot":
+                st.write("**Pairplot**: Shows relationships between all numeric columns")
+                
+                # Let user select which columns to include
+                numeric_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+                
+                if len(numeric_cols) < 2:
+                    st.warning("Need at least 2 numeric columns for a pairplot.")
+                else:
+                    selected_cols = st.multiselect(
+                        "Select columns for pairplot (leave empty for all numeric columns)",
+                        numeric_cols,
+                        default=numeric_cols[:5] if len(numeric_cols) > 5 else numeric_cols,
+                        key="pairplot_cols"
+                    )
+                    
+                    color_col = st.selectbox(
+                        "Select Color/Group Column (Optional)", 
+                        ["None"] + all_cols, 
+                        key="pairplot_color"
+                    )
+                    
+                    if selected_cols and len(selected_cols) >= 2:
+                        fig = px.scatter_matrix(
+                            df,
+                            dimensions=selected_cols,
+                            color=color_col if color_col != "None" else None,
+                            title="Pairplot of Selected Variables",
+                            height=200 * len(selected_cols)  # Dynamic height based on number of columns
+                        )
+                        fig.update_traces(diagonal_visible=False, showupperhalf=False)
+                        
+                        # Make labels more readable
+                        fig.update_layout(
+                            font=dict(size=10),
+                            margin=dict(t=50, l=100, r=100, b=100),
+                        )
+                    else:
+                        st.warning("Please select at least 2 columns for the pairplot.")
 
             if 'fig' in locals():
-                fig.update_layout(height=500, margin=dict(t=50, l=10, r=10, b=10))
-                st.plotly_chart(fig, use_container_width=True)
-
-        # --- Step 6: Final Data Preview ---
-        st.header("6. Final Data Preview")
-        st.write("This is the dataset that will be used for Machine Learning.")
-        st.dataframe(df)
-        st.write(df.dtypes)
-
+                # Use different layout for pairplot vs other plots
+                if st.session_state.selected_viz_type == "Pairplot":
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    fig.update_layout(height=500, margin=dict(t=50, l=10, r=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
 
         # --- Step 7: Machine Learning Predictions ---
         st.header("7. Machine Learning Predictions")

@@ -1,100 +1,56 @@
-import streamlit as st
-import pandas as pd
-import seaborn as sns
+# Standard Library Imports
+import base64
+import datetime
+import hashlib
+import io
+import json
+import os
+import tempfile
+from pathlib import Path
+
+# Third-Party Utility Imports
+import joblib
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.svm import SVC, SVR
-from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, confusion_matrix
-from xgboost import XGBClassifier, XGBRegressor
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import seaborn as sns
+import streamlit as st
+from ydata_profiling import ProfileReport
+
+# ReportLab Imports (PDF generation)
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle
+
+# Machine Learning & Imblearn Imports
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-import numpy as np
-import plotly.express as px
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.units import inch
-import io
-import base64
-from ydata_profiling import ProfileReport
-import tempfile
-import os
-import datetime
-import joblib
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-import streamlit as st
-import pandas as pd
-import json
-import os
-import hashlib
-from pathlib import Path
-from datetime import datetime
-
-
-
-import streamlit as st
-import pandas as pd
-import tempfile
-import os
-import base64
-import numpy as np
-import plotly.express as px
-import matplotlib.pyplot as plt
-import seaborn as sns
-import json
-import hashlib
-from datetime import datetime # Added datetime import for user creation timestamp
-
-# ML Imports
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import (
-    mean_squared_error, r2_score, accuracy_score, 
-    classification_report, confusion_matrix
+from sklearn.ensemble import (
+    RandomForestClassifier, RandomForestRegressor
 )
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.svm import SVC, SVR
-from xgboost import XGBClassifier, XGBRegressor 
-from ydata_profiling import ProfileReport
-
-import streamlit as st
-import pandas as pd
-import tempfile
-import os
-import base64
-import numpy as np
-import plotly.express as px
-import matplotlib.pyplot as plt
-import seaborn as sns
-import json
-import hashlib
-from datetime import datetime
-
-# ML Imports
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import (
+    LinearRegression, LogisticRegression
+)
+from sklearn.metrics import (
+    accuracy_score, classification_report, confusion_matrix, 
+    mean_squared_error, r2_score
+)
+from sklearn.model_selection import (
+    GridSearchCV, train_test_split
+)
+from sklearn.neighbors import (
+    KNeighborsClassifier, KNeighborsRegressor
+)
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import (
-    mean_squared_error, r2_score, accuracy_score, 
-    classification_report, confusion_matrix
-)
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.svm import SVC, SVR
-from xgboost import XGBClassifier, XGBRegressor 
-from ydata_profiling import ProfileReport
-
+from sklearn.tree import (
+    DecisionTreeClassifier, DecisionTreeRegressor
+)
+from xgboost import XGBClassifier, XGBRegressor
 
 
 
@@ -391,12 +347,11 @@ def reset_session_state(df, data_source_key):
     st.session_state.initial_report_html = None
     st.session_state.cleaned_report_html = None
     st.session_state.cleaning_iteration = 0 
-    
 def load_data(uploaded_file):
     """Loads data from a CSV file."""
     try:
-        if uploaded_file.size > 20 * 1024 * 1024:
-            st.error("File size exceeds 20MB limit.")
+        if uploaded_file.size > 500 * 1024 * 1024:
+            st.error("File size exceeds 500MB limit.")
             return None
         df = pd.read_csv(uploaded_file)
         return df
@@ -407,7 +362,6 @@ def load_data(uploaded_file):
 def load_data_from_db(db_type, host, port, user, password, database, sql_query):
     """Mocks loading data from a database connection."""
     st.info(f"Attempting to connect to {db_type} at {host}:{port}...")
-    
     # --- MOCK CONNECTION LOGIC ---
     data = {
         'id': range(1, 101),
@@ -434,6 +388,10 @@ def load_data_from_db(db_type, host, port, user, password, database, sql_query):
     # --- END MOCK CONNECTION LOGIC ---
 
 # === NEW: Sidebar Navigation Function ===
+
+
+
+
 def navigation_sidebar():
     """Handles the sidebar navigation for logged-in users."""
     with st.sidebar:
@@ -834,24 +792,39 @@ def run_main_app_content():
                     st.write(f"  - Skipped duplicate removal.")
 
 
-                # 3. Convert Data Types & Coerce Errors
+               # 3. Convert Data Types & Coerce Errors
                 st.markdown("##### 3. Applying Data Type Conversions & Error Coercion...")
                 for col, new_type in st.session_state.selected_change_types.items():
                     if col in new_df.columns:
-                        errors_param = 'coerce' if st.session_state.coerce_errors and new_type in ["float64", "int64", "datetime64[ns]"] else 'ignore'
                         
                         if new_type == "datetime64[ns]":
+                            errors_param = 'coerce' if st.session_state.coerce_errors else 'ignore'
                             new_df[col] = pd.to_datetime(new_df[col], errors=errors_param)
+                            st.write(f"  - Converted `{col}` to {new_type} (Errors handled: {errors_param}).")
+                        
                         elif new_type == "bool":
                             new_df[col] = new_df[col].astype(bool)
+                            st.write(f"  - Converted `{col}` to {new_type}.")
+                        
+                        elif new_type in ["float64", "int64"]:
+                            # Use pd.to_numeric for numeric conversions (supports 'coerce')
+                            if st.session_state.coerce_errors:
+                                new_df[col] = pd.to_numeric(new_df[col], errors='coerce')
+                                if new_type == "int64":
+                                    # Convert to int, filling NaN values with 0 first
+                                    new_df[col] = new_df[col].fillna(0).astype('int64')
+                                st.write(f"  - Converted `{col}` to {new_type} (Errors handled: coerce).")
+                            else:
+                                new_df[col] = pd.to_numeric(new_df[col], errors='ignore')
+                                st.write(f"  - Converted `{col}` to {new_type} (Errors handled: ignore).")
+                        
                         else:
-                            new_df[col] = new_df[col].astype(new_type, errors=errors_param)
+                            # For other types, use astype with 'ignore' only
+                            new_df[col] = new_df[col].astype(new_type, errors='ignore')
+                            st.write(f"  - Converted `{col}` to {new_type}.")
 
-                        st.write(f"  - Converted `{col}` to {new_type} (Errors handled: {errors_param}).")
-                
                 if st.session_state.coerce_errors:
                     st.info("  - **Note:** Any data errors converted to `NaN` will be addressed in the next step (Handling Missing Values).")
-
 
                 # 4. Handle Missing Values
                 st.markdown("##### 4. Applying Missing Value Handling...")
@@ -982,19 +955,18 @@ def run_main_app_content():
                 file_name='cleaned_data.csv',
                 mime='text/csv',
             )
-
         # --- Step 5: Interactive Data Visualization ---
         st.header("5. Interactive Data Visualization")
         st.write("Explore relationships and distributions in your dataset with Plotly.")
-        
+
         col_viz_1, col_viz_2 = st.columns(2)
         with col_viz_1:
             st.session_state.selected_viz_type = st.selectbox(
                 "Select Plot Type",
-                ["Choose plot type", "Histogram", "Scatter Plot", "Bar Chart", "Box Plot"],
+                ["Choose plot type", "Histogram", "Scatter Plot", "Box Plot", "Bar Chart", "Pairplot"],
                 key="viz_type"
             )
-        
+
         if st.session_state.selected_viz_type != "Choose plot type":
             
             all_cols = st.session_state.cleaned_df.columns.tolist()
@@ -1047,17 +1019,54 @@ def run_main_app_content():
                         y=y_col, 
                         title=f"{agg_func.capitalize()} of {y_col} by {x_col}"
                     )
+            
+            elif st.session_state.selected_viz_type == "Pairplot":
+                st.write("**Pairplot**: Shows relationships between all numeric columns")
+                
+                # Let user select which columns to include
+                numeric_cols = st.session_state.cleaned_df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+                
+                if len(numeric_cols) < 2:
+                    st.warning("Need at least 2 numeric columns for a pairplot.")
+                else:
+                    selected_cols = st.multiselect(
+                        "Select columns for pairplot (leave empty for all numeric columns)",
+                        numeric_cols,
+                        default=numeric_cols[:5] if len(numeric_cols) > 5 else numeric_cols,
+                        key="pairplot_cols"
+                    )
+                    
+                    color_col = st.selectbox(
+                        "Select Color/Group Column (Optional)", 
+                        ["None"] + all_cols, 
+                        key="pairplot_color"
+                    )
+                    
+                    if selected_cols and len(selected_cols) >= 2:
+                        fig = px.scatter_matrix(
+                            df,
+                            dimensions=selected_cols,
+                            color=color_col if color_col != "None" else None,
+                            title="Pairplot of Selected Variables",
+                            height=200 * len(selected_cols)  # Dynamic height based on number of columns
+                        )
+                        fig.update_traces(diagonal_visible=False, showupperhalf=False)
+                        
+                        # Make labels more readable
+                        fig.update_layout(
+                            font=dict(size=10),
+                            margin=dict(t=50, l=100, r=100, b=100),
+                        )
+                    else:
+                        st.warning("Please select at least 2 columns for the pairplot.")
 
             if 'fig' in locals():
-                fig.update_layout(height=500, margin=dict(t=50, l=10, r=10, b=10))
-                st.plotly_chart(fig, use_container_width=True)
-
-        # --- Step 6: Final Data Preview ---
-        st.header("6. Final Data Preview")
-        st.write("This is the dataset that will be used for Machine Learning.")
-        st.dataframe(df)
-        st.write(df.dtypes)
-
+                # Use different layout for pairplot vs other plots
+                if st.session_state.selected_viz_type == "Pairplot":
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    fig.update_layout(height=500, margin=dict(t=50, l=10, r=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
 
         # --- Step 7: Machine Learning Predictions ---
         st.header("7. Machine Learning Predictions")
@@ -1114,7 +1123,14 @@ def run_main_app_content():
                                 y = y.astype('category').cat.codes
                             
                             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                            
+
+                            # Clean categorical columns - convert mixed types to strings and handle NaN
+                            cat_cols_to_check = X.select_dtypes(include=['object', 'category']).columns.tolist()
+                            for col in cat_cols_to_check:
+                                # Convert all values to strings and replace NaN with 'missing'
+                                X_train[col] = X_train[col].fillna('missing').astype(str)
+                                X_test[col] = X_test[col].fillna('missing').astype(str)
+
                             if X_train.isna().any().any() or X_test.isna().any().any():
                                 st.error("Input data contains missing values. Please go back to Step 3 and clean the data first.")
                                 st.stop()
@@ -1171,7 +1187,7 @@ def run_main_app_content():
                                     grid_search = GridSearchCV(
                                         pipeline,
                                         param_grid,
-                                        cv=3,
+                                        cv=5,
                                         scoring=scoring_metric,
                                         n_jobs=-1,
                                         verbose=0
@@ -1385,7 +1401,7 @@ def run_main_app_content():
         st.markdown("""
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
         <div style='text-align: center; margin-top: 2rem; padding: 1rem; background-color: #f0f0f0; border-radius: 10px;'>
-            <div style='font-size: 1.2rem; color: #000000; font-weight: bold;'>✨Sankatos APP (Final Version)✨</div>
+            <div style='font-size: 1.2rem; color: #000000; font-weight: bold;'>✨Sankatos APP✨</div>
             <div style='font-size: 0.9rem; color: #000000; margin-top: 0.2rem;'>Owner/Creator: Mohammed Zakyi</div>
             <div style='font-size: 0.9rem; color: #333; margin-top: 0.5rem;'>
                 <div style='margin-bottom: 0.3rem;'>
@@ -1401,7 +1417,6 @@ def run_main_app_content():
         """, unsafe_allow_html=True)
 
 # ----------------- MAIN CONTROL FLOW -----------------
-
 if authenticate():
     navigation_sidebar() # Always show the sidebar once authenticated
     
@@ -1413,3 +1428,7 @@ if authenticate():
         # 1. The user is a regular user (view defaults to 'main_app')
         # 2. The user is an admin who has switched the view to 'main_app'
         run_main_app_content()
+
+
+
+

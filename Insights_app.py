@@ -347,12 +347,11 @@ def reset_session_state(df, data_source_key):
     st.session_state.initial_report_html = None
     st.session_state.cleaned_report_html = None
     st.session_state.cleaning_iteration = 0 
-    
 def load_data(uploaded_file):
     """Loads data from a CSV file."""
     try:
-        if uploaded_file.size > 20 * 1024 * 1024:
-            st.error("File size exceeds 20MB limit.")
+        if uploaded_file.size > 500 * 1024 * 1024:
+            st.error("File size exceeds 500MB limit.")
             return None
         df = pd.read_csv(uploaded_file)
         return df
@@ -363,7 +362,6 @@ def load_data(uploaded_file):
 def load_data_from_db(db_type, host, port, user, password, database, sql_query):
     """Mocks loading data from a database connection."""
     st.info(f"Attempting to connect to {db_type} at {host}:{port}...")
-    
     # --- MOCK CONNECTION LOGIC ---
     data = {
         'id': range(1, 101),
@@ -1430,4 +1428,7 @@ if authenticate():
         # 1. The user is a regular user (view defaults to 'main_app')
         # 2. The user is an admin who has switched the view to 'main_app'
         run_main_app_content()
+
+
+
 

@@ -1,0 +1,6 @@
+[server]
+enableXsrfProtection = false
+enableCORS = false
+port = 8501
+[server]
+maxUploadSize = 500
